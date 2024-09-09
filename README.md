@@ -23,17 +23,22 @@ This repository houses the source code for a research project aimed at exploring
 
 ### Prerequisites
 - Python 3.8 or newer
-- pip
+- Conda
 - Semantic Scholar API Key
 
 ### Setup
 Clone the repository and install the required dependencies:
 ```bash
+conda create --name arxiv
+conda activate arxiv
 pip install -r requirements.txt
 ```
 
+### Data preparation
+
+
 ### ArXiv Dataset
-The original dataset was sourced from the public ArXiv Dataset available on [Kaggle](https://www.kaggle.com/datasets/Cornell-University/arxiv/data).
+Download the public ArXiv Dataset available on [Kaggle](https://www.kaggle.com/datasets/Cornell-University/arxiv/data) and 
 
 #### Step 1
 ```bash
