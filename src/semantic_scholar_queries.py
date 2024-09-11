@@ -1,19 +1,21 @@
-from collections import defaultdict
 import json
 import os
 import sys
 import time
+import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import requests
 
-DATA_DIR = "/home/loaner/workspace/data"
+from const import DATA_DIR
+
 DATASET_START_YEAR = 2011
 DATASET_END_YEAR = 2021
 CITATION_YEARS = 3
-QUERY_BASE_DELAY = 0.1
-QUERY_MULT_DELAY = 1.2
+QUERY_FAIL_DELAY = 1
+QUERY_FAIL_MULT_DELAY = 2
 QUERY_DUMP_INTERVAL = 10
+
 
 def kaggle_json_to_parquet():
     with open(os.path.join(DATA_DIR, "arxiv-metadata-oai-snapshot.json")) as f:
@@ -64,12 +66,19 @@ def batch_query(
     filtered_query_ids = [id for id in query_ids if id not in data.keys()]
     print(f"Ids without info: {len(filtered_query_ids)}")
 
-    delay = QUERY_BASE_DELAY
+    fail_delay = 0
     pbar = tqdm(total=len(query_ids))
     pbar.update(len(query_ids) - len(filtered_query_ids))
     idx = 0
+    prev_request_time = 0
     while idx < len(filtered_query_ids):
         batch_ids = filtered_query_ids[idx: idx + batch_size]
+        current_time = round(time.time() * 1000)  # time in milisecond
+        throughput_delay = prev_request_time + 1000 - current_time
+        throughput_delay = max(0, min(throughput_delay, 1000)) / 1000
+        if throughput_delay > 0:
+            time.sleep(throughput_delay)
+        prev_request_time = current_time
         response = requests.post(
             query_url,
             params={'fields': query_fields},
@@ -79,11 +88,11 @@ def batch_query(
             if "error" in response.text:
                 print(response.text)
                 sys.exit(1)
-            delay *= QUERY_MULT_DELAY
-            print(f" - Sleeping for {delay} seconds")
+            fail_delay = max(QUERY_FAIL_DELAY, fail_delay * QUERY_FAIL_MULT_DELAY)
+            print(f" - Sleeping for {fail_delay} seconds")
             if "Too Many Requests" not in response.text:
                 print(json.loads(response.text))
-            time.sleep(delay)
+            time.sleep(fail_delay)
             continue
 
         for id, response in zip(batch_ids, response.json()):
@@ -95,13 +104,12 @@ def batch_query(
         
         idx += batch_size
         pbar.update(batch_size)
-        delay = max(QUERY_BASE_DELAY, delay / QUERY_MULT_DELAY)
+        fail_delay = 0
 
         if idx % (batch_size * QUERY_DUMP_INTERVAL) == 0:
-            print(f"Dumping data to {json_save_path}")
+            # print(f"Dumping data to {json_save_path}")
             with open(json_save_path, 'w') as f:
                 json.dump(data, f, indent=4)
-        time.sleep(delay)
     pbar.close()
 
     with open(json_save_path, 'w') as f:
@@ -117,7 +125,7 @@ def prepare_papers_data():
 
     # Work on few papers
     kaggle_data = kaggle_data.sample(frac=1., random_state=0)
-    kaggle_data = kaggle_data[:20]
+    kaggle_data = kaggle_data[:100]
     
     def process_paper_response(j: json):
         if j["year"] is None:
@@ -175,5 +183,8 @@ def prepare_authors_data():
         process_response_f=process_author_response
     )
 
-prepare_papers_data()
-prepare_authors_data()
+
+if __name__ == '__main__':
+    pass
+    prepare_papers_data()
+    prepare_authors_data()
