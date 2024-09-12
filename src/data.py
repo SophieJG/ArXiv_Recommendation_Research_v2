@@ -6,8 +6,9 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import requests
+from sklearn.model_selection import train_test_split
 
-from const import DATA_DIR
+from const import DATA_DIR, NUM_NEGATIVE
 
 DATASET_START_YEAR = 2011
 DATASET_END_YEAR = 2021
@@ -43,7 +44,7 @@ def get_citing_authors(l: list, paper_year: int, citation_years: int = CITATION_
                 for author in citation["authors"]:
                     authors.add(int(author["authorId"]))
         except TypeError:
-            # catch year is null
+            # year is null
             continue
     return list(authors)
 
@@ -61,9 +62,8 @@ def batch_query(
             data = json.load(f)
     else:
         data = {}
-
     print(f"Number of query ids: {len(query_ids)}")
-    filtered_query_ids = [id for id in query_ids if id not in data.keys()]
+    filtered_query_ids = [id for id in query_ids if str(id) not in data.keys()]
     print(f"Ids without info: {len(filtered_query_ids)}")
 
     fail_delay = 0
@@ -79,8 +79,10 @@ def batch_query(
         if throughput_delay > 0:
             time.sleep(throughput_delay)
         prev_request_time = current_time
+        api_key = os.environ.get('API_KEY')
         response = requests.post(
             query_url,
+            headers={'x-api-key': api_key} if api_key is not None else {},
             params={'fields': query_fields},
             json={"ids": batch_ids}
         )
@@ -184,7 +186,51 @@ def prepare_authors_data():
     )
 
 
+def generate_samples():
+    rng = np.random.default_rng(seed=42)
+    papers_path = os.path.join(DATA_DIR, "papers.json")
+    with open(papers_path) as f:
+        papers = json.load(f)
+    authors_path = os.path.join(DATA_DIR, "authors.json")
+    with open(authors_path) as f:
+        authors = json.load(f)
+    author_keys = list(authors.keys())
+
+    samples = []
+    for paper_id, paper in papers.items():
+        # Positive samples
+        for citing_author in paper["citing_authors"]:
+            samples.append(
+                {
+                    "paper": paper_id,
+                    "year": paper["year"],
+                    "author": citing_author,
+                    "label": True
+                }
+            )
+        # Negative samples
+        for author_idx in rng.integers(low=0, high=len(authors), size=NUM_NEGATIVE):
+            samples.append(
+                {
+                    "paper": paper_id,
+                    "year": paper["year"],
+                    "author": author_keys[author_idx],
+                    "label": False
+                }
+            )
+
+    samples = pd.DataFrame.from_records(samples)
+    test = samples[samples["year"] == 2020]
+    train_validation_samples = samples[samples["year"] < 2020]
+    train, validation = train_test_split(train_validation_samples, test_size=0.2, stratify=train_validation_samples[["year", "label"]], random_state=42)
+    for d, name in [(train, "train"), (validation, "validation"), (test, "test")]:
+        print(f"{name}:", len(d))
+        d = d.drop("year", axis=1)
+        d.to_csv(os.path.join(DATA_DIR, f"{name}.csv"), index=False)
+
+
 if __name__ == '__main__':
-    pass
-    prepare_papers_data()
-    prepare_authors_data()
+    # prepare_papers_data()
+    # prepare_authors_data()
+    generate_samples()
+    

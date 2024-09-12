@@ -4,3 +4,4 @@ tqdm
 PyYAML
 pyarrow
 requests
+scikit-learn

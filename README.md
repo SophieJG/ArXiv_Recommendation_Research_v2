@@ -1,5 +1,8 @@
 # User-Item Fairness Tradeoffs in Recommendations
 
+'''bash
+export API_KEY=<your key>
+'''
 
 ## Overview
 This repository houses the source code for a research project aimed at exploring user-item fairness tradeoffs in recommendation systems. The project encompasses both theoretical frameworks and empirical evaluations to assess and improve fairness in recommendations.
