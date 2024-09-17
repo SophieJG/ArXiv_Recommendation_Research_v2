@@ -2,6 +2,7 @@ import json
 import os
 
 import pandas as pd
+from tqdm import tqdm
 from util import DATA_DIR, KAGGLE_DATA_PATH, AUTHORS_PATH, PAPERS_PATH
 
 class Data:
@@ -22,30 +23,32 @@ class Data:
         self.validation = pd.read_csv(os.path.join(DATA_DIR, "validation.csv"))
         self.test = pd.read_csv(os.path.join(DATA_DIR, "test.csv"))
 
-    def get_papers(
-            self,
-            fold: str
-    ):
-        # Refactors the paper raw data into vector of the relevant papers for the fold
+    def parse_fold(self, fold: str):
         assert fold in ["train", "validation", "test"]
-        fold = {
+        return {
             "train": self.train,
             "validation": self.validation,
             "test": self.test
         }[fold]
-
-        paper_list = []
-        paper_ids = set(fold["paper"])
-        for paper_id, paper_data in self.papers.items():
-            if paper_id in paper_ids:
-                paper_list.append({
-                    # No other fields are allowed to take from Semantic Scholar - won't be available for nightly email
-                    "id": paper_id,
-                    "referenceCount" : paper_data["referenceCount"],
-                    "authors" : paper_data["authors"],
-                    "cited_authors" : paper_data["cited_authors"]
-                })
-        df = pd.DataFrame.from_records(paper_list).set_index("id", drop=True)
-        # join with kaggle data
-        df = df.add_prefix('ss_').join(self.kaggle_data.add_prefix("arxiv_"))
-        return df
+    
+    def get_fold(self, fold: str):
+        fold = self.parse_fold(fold)
+        samples = []
+        for _, row in tqdm(fold.iterrows(), total=len(fold), desc="Generating samples"):
+            paper_id = row["paper"]
+            author_id = str(row["author"])
+            kaggle_paper_data = self.kaggle_data.loc[paper_id]
+            paper_year = kaggle_paper_data["year_updated"]
+            samples.append({
+                **{key: value for key, value in self.papers[paper_id].items() if key not in ["year", "citing_authors"]},
+                "title": kaggle_paper_data["title"],
+                "categories": list(kaggle_paper_data["categories"]),
+                "author": {
+                    "id": author_id,
+                    "papers": [
+                        p for p in self.authors[author_id]["papers"] if p["year"] < paper_year  # Take only papers that precede the recommended paper publication year
+                    ]
+                },
+                "label": row["label"]
+            })
+        return samples

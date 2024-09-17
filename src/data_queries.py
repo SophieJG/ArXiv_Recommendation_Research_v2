@@ -73,6 +73,8 @@ def batch_query(
     print(f"Number of query ids: {len(query_ids)}")
     filtered_query_ids = [id for id in query_ids if str(id) not in data.keys()]
     print(f"Ids without info: {len(filtered_query_ids)}")
+    api_key = os.environ.get('API_KEY')
+    print("Using api_key:", api_key)
 
     fail_delay = 0
     pbar = tqdm(total=len(query_ids))
@@ -87,7 +89,6 @@ def batch_query(
         if throughput_delay > 0:
             time.sleep(throughput_delay)
         prev_request_time = current_time
-        api_key = os.environ.get('API_KEY')
         response = requests.post(
             query_url,
             headers={'x-api-key': api_key} if api_key is not None else {},
@@ -97,12 +98,15 @@ def batch_query(
         if response.status_code != 200:
             if "error" in response.text:
                 print(response.text)
-                sys.exit(1)
+                # sys.exit(1)
             fail_delay = max(QUERY_FAIL_DELAY, fail_delay * QUERY_FAIL_MULT_DELAY)
             print(f" - Sleeping for {fail_delay} seconds")
             if "Too Many Requests" not in response.text:
                 print(json.loads(response.text))
             time.sleep(fail_delay)
+            print("Skipping batch")
+            idx += batch_size
+            pbar.update(batch_size)
             continue
 
         for id, response in zip(batch_ids, response.json()):
@@ -125,6 +129,8 @@ def batch_query(
     with open(json_save_path, 'w') as f:
         json.dump(data, f, indent=4)
 
+    print(f"Successfully queried {len(data)} out of {len(query_ids)}")
+
 
 def prepare_papers_data():
     print("\nQuering Semantic Scholar for papers info")
@@ -132,7 +138,7 @@ def prepare_papers_data():
 
     # Work on few papers
     kaggle_data = kaggle_data.sample(frac=1., random_state=0)
-    kaggle_data = kaggle_data[:100]
+    kaggle_data = kaggle_data[:200]
     
     def process_paper_response(j: json):
         if j["year"] is None:
@@ -150,7 +156,7 @@ def prepare_papers_data():
         json_save_path=PAPERS_PATH,
         query_ids=[f"ARXIV:{id}" for id in kaggle_data["id"]],
         batch_size=20,
-        query_fields="year,referenceCount,isOpenAccess,publicationTypes,authors,citations.year,citations.authors,references.authors",
+        query_fields="year,authors,referenceCount,references.authors,citations.year,citations.authors",
         query_url="https://api.semanticscholar.org/graph/v1/paper/batch",
         process_response_f=process_paper_response
     )
@@ -162,6 +168,8 @@ def prepare_authors_data():
         papers = json.load(f)
     citing_authors = set()
     for paper in papers.values():
+        if paper is None:
+            continue
         for citing_author in paper["citing_authors"]:
             citing_authors.add(citing_author)
     print(f"{len(papers)} papers have {len(citing_authors)} citing authors")
@@ -184,7 +192,7 @@ def prepare_authors_data():
         json_save_path=AUTHORS_PATH,
         query_ids=list(citing_authors),
         batch_size=100,
-        query_fields="papers.year,papers.fieldsOfStudy,papers.s2FieldsOfStudy",
+        query_fields="papers.year,papers.title,papers.fieldsOfStudy,papers.s2FieldsOfStudy",
         query_url="https://api.semanticscholar.org/graph/v1/author/batch",
         process_response_f=process_author_response
     )
@@ -199,10 +207,14 @@ def generate_samples():
         authors = json.load(f)
     author_keys = list(authors.keys())
 
+    num_citing_authors_not_found = 0
     samples = []
     for paper_id, paper in papers.items():
         # Positive samples
         for citing_author in paper["citing_authors"]:
+            if str(citing_author) not in authors.keys():
+                num_citing_authors_not_found += 1
+                continue
             samples.append(
                 {
                     "paper": paper_id,
@@ -213,6 +225,9 @@ def generate_samples():
             )
         # Negative samples
         for author_idx in rng.integers(low=0, high=len(authors), size=NUM_NEGATIVE):
+            if int(author_keys[author_idx]) in paper["citing_authors"]:
+                # Actually a positive sample
+                continue
             samples.append(
                 {
                     "paper": paper_id,
@@ -221,7 +236,6 @@ def generate_samples():
                     "label": False
                 }
             )
-
     samples = pd.DataFrame.from_records(samples)
     test = samples[samples["year"] == 2020]
     train_validation_samples = samples[samples["year"] < 2020]
@@ -230,11 +244,11 @@ def generate_samples():
         print(f"{name}:", len(d))
         d = d.drop("year", axis=1)
         d.to_csv(os.path.join(DATA_DIR, f"{name}.csv"), index=False)
+    print("Citing authors not found in database:", num_citing_authors_not_found)
 
 
 if __name__ == '__main__':
-    kaggle_json_to_parquet()
-    prepare_papers_data()
-    prepare_authors_data()
+    # kaggle_json_to_parquet()
+    # prepare_papers_data()
+    # prepare_authors_data()
     generate_samples()
-    
