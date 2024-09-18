@@ -1,6 +1,5 @@
 import json
 import os
-import sys
 import time
 import numpy as np
 import pandas as pd
@@ -9,7 +8,7 @@ import requests
 from sklearn.model_selection import train_test_split
 
 
-from util import DATA_DIR, NUM_NEGATIVE, DATASET_START_YEAR, DATASET_END_YEAR, CITATION_YEARS
+from util import DATA_DIR, NUM_NEGATIVE, DATASET_START_YEAR, DATASET_END_YEAR, CITATION_YEARS, NUM_PAPERS
 from util import KAGGLE_DATA_PATH, PAPERS_PATH, AUTHORS_PATH
 
 
@@ -138,7 +137,7 @@ def prepare_papers_data():
 
     # Work on few papers
     kaggle_data = kaggle_data.sample(frac=1., random_state=0)
-    kaggle_data = kaggle_data[:200]
+    kaggle_data = kaggle_data[:NUM_PAPERS]
     
     def process_paper_response(j: json):
         if j["year"] is None:
@@ -162,8 +161,10 @@ def prepare_papers_data():
     )
 
 
-def prepare_authors_data():
-    print("\nQuering Semantic Scholar for authors info")
+def prepare_authors_data(
+    batch_size: int
+):
+    print(f"\nQuering Semantic Scholar for authors info (batch size = {batch_size})")
     with open(PAPERS_PATH) as f:
         papers = json.load(f)
     citing_authors = set()
@@ -191,7 +192,7 @@ def prepare_authors_data():
     batch_query(
         json_save_path=AUTHORS_PATH,
         query_ids=list(citing_authors),
-        batch_size=100,
+        batch_size=batch_size,
         query_fields="papers.year,papers.title,papers.fieldsOfStudy,papers.s2FieldsOfStudy",
         query_url="https://api.semanticscholar.org/graph/v1/author/batch",
         process_response_f=process_author_response
@@ -205,14 +206,19 @@ def generate_samples():
         papers = json.load(f)
     with open(AUTHORS_PATH) as f:
         authors = json.load(f)
-    author_keys = list(authors.keys())
+    valid_authors = [int(key) for key, value in authors.items() if value is not None]
+    print(f"Valid authors: {len(valid_authors)} / {len(authors)}")
 
     num_citing_authors_not_found = 0
+    num_null_papers = 0
     samples = []
     for paper_id, paper in papers.items():
+        if paper is None:
+            num_null_papers += 1
+            continue
         # Positive samples
         for citing_author in paper["citing_authors"]:
-            if str(citing_author) not in authors.keys():
+            if citing_author not in valid_authors:
                 num_citing_authors_not_found += 1
                 continue
             samples.append(
@@ -224,15 +230,15 @@ def generate_samples():
                 }
             )
         # Negative samples
-        for author_idx in rng.integers(low=0, high=len(authors), size=NUM_NEGATIVE):
-            if int(author_keys[author_idx]) in paper["citing_authors"]:
+        for author_idx in rng.integers(low=0, high=len(valid_authors), size=NUM_NEGATIVE):
+            if valid_authors[author_idx] in paper["citing_authors"]:
                 # Actually a positive sample
                 continue
             samples.append(
                 {
                     "paper": paper_id,
                     "year": paper["year"],
-                    "author": author_keys[author_idx],
+                    "author": valid_authors[author_idx],
                     "label": False
                 }
             )
@@ -245,10 +251,12 @@ def generate_samples():
         d = d.drop("year", axis=1)
         d.to_csv(os.path.join(DATA_DIR, f"{name}.csv"), index=False)
     print("Citing authors not found in database:", num_citing_authors_not_found)
+    print("num_null_papers:", num_null_papers)
 
 
 if __name__ == '__main__':
-    # kaggle_json_to_parquet()
-    # prepare_papers_data()
-    # prepare_authors_data()
+    kaggle_json_to_parquet()
+    prepare_papers_data()
+    for batch_size in [100, 25, 5, 1]:
+        prepare_authors_data(batch_size)
     generate_samples()
