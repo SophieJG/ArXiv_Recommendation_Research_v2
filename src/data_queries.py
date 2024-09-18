@@ -154,11 +154,17 @@ def prepare_papers_data():
     batch_query(
         json_save_path=PAPERS_PATH,
         query_ids=[f"ARXIV:{id}" for id in kaggle_data["id"]],
-        batch_size=20,
+        batch_size=100,
         query_fields="year,authors,referenceCount,references.authors,citations.year,citations.authors",
         query_url="https://api.semanticscholar.org/graph/v1/paper/batch",
         process_response_f=process_paper_response
     )
+
+    # Verify that no papers are missing from the dataset (usually due to failed api calls)
+    with open(PAPERS_PATH) as f:
+        papers = json.load(f)
+    assert len(papers) == len(kaggle_data)
+
 
 
 def prepare_authors_data(
@@ -178,8 +184,7 @@ def prepare_authors_data(
     def process_author_response(j: json):
         papers = [
             {
-                "year": paper["year"],
-                "fieldsOfStudy": paper["fieldsOfStudy"],
+                **{key: paper[key] for key in ["year", "title", "fieldsOfStudy"]},
                 "s2FieldsOfStudy": list(set([tmp["category"] for tmp in paper["s2FieldsOfStudy"] if tmp["category"] is not None]))
             }
             for paper in j["papers"] if paper["year"] is not None

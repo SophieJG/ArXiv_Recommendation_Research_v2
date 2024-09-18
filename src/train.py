@@ -17,10 +17,16 @@ def calc_metrics(labels, proba):
 def train(
     data: Data
 ):
+    print("\n*****\nTraining")
     model = CatboostModel()
     model.fit(data)
     model.save("/tmp/")
 
+
+def eval(
+    data: Data
+):
+    print("\n*****\nEvaluation")
     model = CatboostModel()
     model.load("/tmp/")
     metrics = {}
@@ -34,3 +40,4 @@ def train(
 if __name__ == '__main__':
     data = Data()
     train(data)
+    eval(data)
