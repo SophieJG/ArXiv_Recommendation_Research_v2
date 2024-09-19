@@ -137,7 +137,8 @@ def prepare_papers_data():
 
     # Work on few papers
     kaggle_data = kaggle_data.sample(frac=1., random_state=0)
-    kaggle_data = kaggle_data[:NUM_PAPERS]
+    if NUM_PAPERS > 0:
+        kaggle_data = kaggle_data[:NUM_PAPERS]
     
     def process_paper_response(j: json):
         if j["year"] is None:
@@ -204,6 +205,15 @@ def prepare_authors_data(
     )
 
 
+def split_by_paper(df: pd.DataFrame, test_size: float, random_state: int = 42):
+    papers = df.groupby("paper").agg({"year": {"first"}})
+    papers_train, papers_test = train_test_split(papers, test_size=test_size, random_state=random_state)
+    df_train = df[df["paper"].isin(papers_train.index)]
+    df_test = df[df["paper"].isin(papers_test.index)]
+    assert len(df_train) + len(df_test) == len(df)
+    return df_train, df_test
+
+
 def generate_samples():
     print("\nGenerating train, validation and test folds")
     rng = np.random.default_rng(seed=42)
@@ -248,9 +258,16 @@ def generate_samples():
                 }
             )
     samples = pd.DataFrame.from_records(samples)
-    test = samples[samples["year"] == 2020]
-    train_validation_samples = samples[samples["year"] < 2020]
-    train, validation = train_test_split(train_validation_samples, test_size=0.2, stratify=train_validation_samples[["year", "label"]], random_state=42)
+    
+    # When splitting to folds...
+    if True:
+        # Test set is the year 2020
+        test = samples[samples["year"] == 2020]
+        train_validation_samples = samples[samples["year"] < 2020]
+    else:
+        # Test set is randomly selected from all years
+        train_validation_samples, test = split_by_paper(samples, test_size=0.2)
+    train, validation = split_by_paper(train_validation_samples, test_size=0.2)
     for d, name in [(train, "train"), (validation, "validation"), (test, "test")]:
         print(f"{name}:", len(d))
         d = d.drop("year", axis=1)

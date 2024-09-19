@@ -6,3 +6,5 @@ pyarrow
 requests
 scikit-learn
 catboost
+pyyaml
+argparse

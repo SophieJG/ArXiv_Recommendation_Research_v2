@@ -59,7 +59,7 @@ class CatboostModel(BaseModel):
             ("author_s2FieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_s2FieldsOfStudy"),
         ])
         X_train = self.feature_processing_pipeline.fit_transform(X_train)
-        print("Training data size:", X_train.shape)
+        print("Training data size:", X_train.shape, " type:", type(X_train))
         X_val, y_val = self.load_fold(data, "validation")
         X_val = self.feature_processing_pipeline.transform(X_val)
         self.model = CatBoostClassifier()
