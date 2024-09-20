@@ -3,25 +3,26 @@ import os
 
 import pandas as pd
 from tqdm import tqdm
-from util import DATA_DIR, KAGGLE_DATA_PATH, AUTHORS_PATH, PAPERS_PATH
+from util import data_dir, kaggle_data_path, authors_path, papers_path
+
 
 class Data:
-    def __init__(self) -> None:
+    def __init__(self, config: dict) -> None:
         print("Loading Arxiv Kaggle data")
-        with open(KAGGLE_DATA_PATH) as f:
-            self.kaggle_data = pd.read_parquet(KAGGLE_DATA_PATH)
+        with open(kaggle_data_path(config)) as f:
+            self.kaggle_data = pd.read_parquet(kaggle_data_path(config))
         self.kaggle_data["index"] = [f"ARXIV:{id}" for id in self.kaggle_data["id"]]
         self.kaggle_data = self.kaggle_data.set_index("index", drop=True)
         print("Loading papers data")
-        with open(PAPERS_PATH) as f:
+        with open(papers_path(config)) as f:
             self.papers = json.load(f)
         print("Loading authors data")
-        with open(AUTHORS_PATH) as f:
+        with open(authors_path(config)) as f:
             self.authors = json.load(f)
         print("loading folds")
-        self.train = pd.read_csv(os.path.join(DATA_DIR, "train.csv"))
-        self.validation = pd.read_csv(os.path.join(DATA_DIR, "validation.csv"))
-        self.test = pd.read_csv(os.path.join(DATA_DIR, "test.csv"))
+        self.train = pd.read_csv(os.path.join(data_dir(config), "train.csv"))
+        self.validation = pd.read_csv(os.path.join(data_dir(config), "validation.csv"))
+        self.test = pd.read_csv(os.path.join(data_dir(config), "test.csv"))
 
     def parse_fold(self, fold: str):
         assert fold in ["train", "validation", "test"]

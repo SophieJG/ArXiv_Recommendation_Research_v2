@@ -8,7 +8,6 @@ from catboost import CatBoostClassifier
 
 from data import Data
 from models.base_model import BaseModel
-from util import DATA_DIR
 
 
 def passthrough_func(x):
@@ -16,7 +15,7 @@ def passthrough_func(x):
 
 
 class CatboostModel(BaseModel):
-    def __init__(self) -> None:
+    def __init__(self, params: dict) -> None:
         self.model = None
         self.feature_processing_pipeline = None
         

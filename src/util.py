@@ -1,13 +1,16 @@
 import os
 
+def data_dir(config: dict):
+    return os.path.join(config["data"]["base_path"], "data")
 
-NUM_NEGATIVE = 50
-DATASET_START_YEAR = 2011
-DATASET_END_YEAR = 2021
-CITATION_YEARS = 3
-NUM_PAPERS = 100
+def models_dir(config: dict):
+    return os.path.join(config["data"]["base_path"], "models")
 
-DATA_DIR = "/home/loaner/workspace/data"
-PAPERS_PATH = os.path.join(DATA_DIR, "papers.json")
-AUTHORS_PATH = os.path.join(DATA_DIR, "authors.json")
-KAGGLE_DATA_PATH = os.path.join(DATA_DIR, "kaggle_data.parquet")
+def papers_path(config: dict):
+    return os.path.join(data_dir(config), "papers.json")
+
+def authors_path(config: dict):
+    return os.path.join(data_dir(config), "authors.json")
+
+def kaggle_data_path(config: dict):
+    return os.path.join(data_dir(config), "kaggle_data.parquet")

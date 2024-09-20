@@ -1,0 +1,3 @@
+data_queries: False
+train: True
+eval: True

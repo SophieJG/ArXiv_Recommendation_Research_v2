@@ -1,1 +1,2 @@
-
+model: "catboost"  # Which model to train, currently supported models: [catboost]
+params: []  # Additional model params...

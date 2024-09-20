@@ -8,8 +8,7 @@ import requests
 from sklearn.model_selection import train_test_split
 
 
-from util import DATA_DIR, NUM_NEGATIVE, DATASET_START_YEAR, DATASET_END_YEAR, CITATION_YEARS, NUM_PAPERS
-from util import KAGGLE_DATA_PATH, PAPERS_PATH, AUTHORS_PATH
+from util import data_dir, kaggle_data_path, papers_path, authors_path
 
 
 QUERY_FAIL_DELAY = 1
@@ -17,12 +16,12 @@ QUERY_FAIL_MULT_DELAY = 2
 QUERY_DUMP_INTERVAL = 10
 
 
-def kaggle_json_to_parquet():
-    if os.path.exists(KAGGLE_DATA_PATH):
+def kaggle_json_to_parquet(config: dict):
+    if os.path.exists(kaggle_data_path(config)):
         print("Kaggle data already converted to parquet - Skipping")
         return
     print("\nFiltering and converting Arxiv Kaggle data to Pandas")
-    with open(os.path.join(DATA_DIR, "arxiv-metadata-oai-snapshot.json")) as f:
+    with open(config["data"]["arxiv_json_path"]) as f:
         kaggle_data = []
         for l in tqdm(f.readlines(), "Parsing json"):
             l = json.loads(l)
@@ -34,15 +33,16 @@ def kaggle_json_to_parquet():
                         kaggle_data.append(l)
                         break
         kaggle_data = pd.DataFrame(kaggle_data)
-        print(f"Filtering relevant years (year < {DATASET_END_YEAR}) & (year >= {DATASET_START_YEAR})")
+        print(f"Filtering relevant years (year < {config["data"]["end_year"]}) & (year >= {config["data"]["start_year"]})")
         kaggle_data['update_date'] = pd.to_datetime(kaggle_data['update_date'])
         kaggle_data['year_updated'] = kaggle_data['update_date'].dt.year
-        kaggle_data = kaggle_data[(kaggle_data["year_updated"] < DATASET_END_YEAR) & (kaggle_data["year_updated"] >= DATASET_START_YEAR)]
-        kaggle_data.to_parquet(KAGGLE_DATA_PATH)
+        kaggle_data = kaggle_data[(kaggle_data["year_updated"] < config["data"]["end_year"]) & (kaggle_data["year_updated"] >= config["data"]["start_year"])]
+        os.makedirs(data_dir(config), exist_ok=True)
+        kaggle_data.to_parquet(kaggle_data_path(config))
         print(kaggle_data)
 
 
-def get_citing_authors(l: list, paper_year: int, citation_years: int = CITATION_YEARS):
+def get_citing_authors(l: list, paper_year: int, citation_years: int):
     authors = set()
     for citation in l:
         try:
@@ -62,7 +62,8 @@ def batch_query(
     batch_size,
     query_fields,
     query_url,
-    process_response_f
+    process_response_f,
+    **kwargs
 ):
     if os.path.exists(json_save_path):
         with open(json_save_path) as f:
@@ -113,7 +114,7 @@ def batch_query(
                 print(f"{id} returned None")
                 data[id] = None
                 continue
-            data[id] = process_response_f(response)
+            data[id] = process_response_f(response, **kwargs)
         
         idx += batch_size
         pbar.update(batch_size)
@@ -131,20 +132,20 @@ def batch_query(
     print(f"Successfully queried {len(data)} out of {len(query_ids)}")
 
 
-def prepare_papers_data():
+def query_papers(config: dict):
     print("\nQuering Semantic Scholar for papers info")
-    kaggle_data = pd.read_parquet(KAGGLE_DATA_PATH)
+    kaggle_data = pd.read_parquet(kaggle_data_path(config))
 
     # Work on few papers
     kaggle_data = kaggle_data.sample(frac=1., random_state=0)
-    if NUM_PAPERS > 0:
-        kaggle_data = kaggle_data[:NUM_PAPERS]
+    if config["data"]["num_papers"] > 0:
+        kaggle_data = kaggle_data[:config["data"]["num_papers"]]
     
-    def process_paper_response(j: json):
+    def process_paper_response(j: dict, **kwargs):
         if j["year"] is None:
             return None
         j["authors"] = list(set([int(tmp["authorId"]) for tmp in j["authors"] if tmp["authorId"] is not None]))
-        j["citing_authors"] = get_citing_authors(j["citations"], int(j["year"]))
+        j["citing_authors"] = get_citing_authors(j["citations"], int(j["year"]), **kwargs)
         del j["citations"]
         j["cited_authors"] = list(set([int(author["authorId"]) for ref in j["references"] for author in ref["authors"] if author["authorId"] is not None]))
         del j["references"]
@@ -153,26 +154,28 @@ def prepare_papers_data():
 
     # See Semantic Scholar API docs: https://api.semanticscholar.org/api-docs/graph#tag/Paper-Data/operation/post_graph_get_papers
     batch_query(
-        json_save_path=PAPERS_PATH,
+        json_save_path=papers_path(config),
         query_ids=[f"ARXIV:{id}" for id in kaggle_data["id"]],
         batch_size=100,
         query_fields="year,authors,referenceCount,references.authors,citations.year,citations.authors",
         query_url="https://api.semanticscholar.org/graph/v1/paper/batch",
-        process_response_f=process_paper_response
+        process_response_f=process_paper_response,
+        citation_years=config["data"]["cication_years"]  # Additional arg for process_paper_response - passed using **kwargs
     )
 
     # Verify that no papers are missing from the dataset (usually due to failed api calls)
-    with open(PAPERS_PATH) as f:
+    with open(papers_path(config)) as f:
         papers = json.load(f)
     assert len(papers) == len(kaggle_data)
 
 
 
-def prepare_authors_data(
+def query_authors(
+    config: dict,
     batch_size: int
 ):
     print(f"\nQuering Semantic Scholar for authors info (batch size = {batch_size})")
-    with open(PAPERS_PATH) as f:
+    with open(papers_path(config)) as f:
         papers = json.load(f)
     citing_authors = set()
     for paper in papers.values():
@@ -196,7 +199,7 @@ def prepare_authors_data(
 
     # See Semantic Scholar API docs: https://api.semanticscholar.org/api-docs/graph#tag/Author-Data/operation/post_graph_get_authors
     batch_query(
-        json_save_path=AUTHORS_PATH,
+        json_save_path=authors_path(config),
         query_ids=list(citing_authors),
         batch_size=batch_size,
         query_fields="papers.year,papers.title,papers.fieldsOfStudy,papers.s2FieldsOfStudy",
@@ -214,12 +217,12 @@ def split_by_paper(df: pd.DataFrame, test_size: float, random_state: int = 42):
     return df_train, df_test
 
 
-def generate_samples():
+def generate_samples(config: dict):
     print("\nGenerating train, validation and test folds")
     rng = np.random.default_rng(seed=42)
-    with open(PAPERS_PATH) as f:
+    with open(papers_path(config)) as f:
         papers = json.load(f)
-    with open(AUTHORS_PATH) as f:
+    with open(authors_path(config)) as f:
         authors = json.load(f)
     valid_authors = [int(key) for key, value in authors.items() if value is not None]
     print(f"Valid authors: {len(valid_authors)} / {len(authors)}")
@@ -245,7 +248,7 @@ def generate_samples():
                 }
             )
         # Negative samples
-        for author_idx in rng.integers(low=0, high=len(valid_authors), size=NUM_NEGATIVE):
+        for author_idx in rng.integers(low=0, high=len(valid_authors), size=config["data"]["num_negative"]):
             if valid_authors[author_idx] in paper["citing_authors"]:
                 # Actually a positive sample
                 continue
@@ -259,8 +262,7 @@ def generate_samples():
             )
     samples = pd.DataFrame.from_records(samples)
     
-    # When splitting to folds...
-    if True:
+    if config["data"]["test_is_2020"]:
         # Test set is the year 2020
         test = samples[samples["year"] == 2020]
         train_validation_samples = samples[samples["year"] < 2020]
@@ -271,14 +273,6 @@ def generate_samples():
     for d, name in [(train, "train"), (validation, "validation"), (test, "test")]:
         print(f"{name}:", len(d))
         d = d.drop("year", axis=1)
-        d.to_csv(os.path.join(DATA_DIR, f"{name}.csv"), index=False)
+        d.to_csv(os.path.join(data_dir(config), f"{name}.csv"), index=False)
     print("Citing authors not found in database:", num_citing_authors_not_found)
     print("num_null_papers:", num_null_papers)
-
-
-if __name__ == '__main__':
-    kaggle_json_to_parquet()
-    prepare_papers_data()
-    for batch_size in [100, 25, 5, 1]:
-        prepare_authors_data(batch_size)
-    generate_samples()

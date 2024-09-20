@@ -3,6 +3,12 @@ from data import Data
 
 
 class BaseModel:
+    def __init__(
+        self,
+        params: dict
+    ):
+        pass
+
     def fit(
         self,
         data: Data
