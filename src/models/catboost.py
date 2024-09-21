@@ -18,7 +18,10 @@ class CatboostModel(BaseModel):
     def __init__(self, params: dict) -> None:
         self.model = None
         self.feature_processing_pipeline = None
-        
+
+    def model_name(self):
+        return "catboost.0"
+
     def load_fold(
         self,
         data: Data,
@@ -70,26 +73,22 @@ class CatboostModel(BaseModel):
         X = self.feature_processing_pipeline.transform(X)
         return self.model.predict_proba(X)[:, 1]
 
-    def save(
+    def save_(
         self,
         path: str
     ):
-        p = os.path.join(path, "catboost")
-        print(f"Saving Catboost model to {p}")
-        os.makedirs(p, exist_ok=True)
-        self.model.save_model(os.path.join(p, "model.cbm"), format="cbm")
-        with open(os.path.join(p, "pipeline.pkl"), "wb") as f:
+        assert self.model is not None
+        self.model.save_model(os.path.join(path, "model.cbm"), format="cbm")
+        with open(os.path.join(path, "pipeline.pkl"), "wb") as f:
             joblib.dump(self.feature_processing_pipeline, f, protocol=5)        
 
-    def load(
+    def load_(
         self,
         path: str
     ):
         assert self.model is None
-        p = os.path.join(path, "catboost")
-        print(f"Loading Catboost model from {p}")
         self.model = CatBoostClassifier()
-        self.model.load_model(os.path.join(p, "model.cbm"), format="cbm")
-        with open(os.path.join(p, "pipeline.pkl"), "rb") as f:
+        self.model.load_model(os.path.join(path, "model.cbm"), format="cbm")
+        with open(os.path.join(path, "pipeline.pkl"), "rb") as f:
             self.feature_processing_pipeline = joblib.load(f)
 

@@ -1,3 +1,7 @@
-data_queries: False
+data_queries:
+  kaggle_json_to_parquet: True
+  query_papers: True
+  query_authors: True
+  generate_samples: True
 train: True
 eval: True

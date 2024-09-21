@@ -26,11 +26,14 @@ def load_config():
 
 
 def runner(config: dict):
-    if config["runner"]["data_queries"]:
+    if config["runner"]["data_queries"]["kaggle_json_to_parquet"]:
         kaggle_json_to_parquet(config)
+    if config["runner"]["data_queries"]["query_papers"]:
         query_papers(config)
+    if config["runner"]["data_queries"]["query_authors"]:
         for batch_size in config["data"]["prepare_authors_data_batch_sizes"]:
             query_authors(config, batch_size)
+    if config["runner"]["data_queries"]["generate_samples"]:
         generate_samples(config)
     if config["runner"]["train"]:
         train(config)
