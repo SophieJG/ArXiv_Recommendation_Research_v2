@@ -16,6 +16,9 @@ def get_model(config):
 def train(
     config: dict
 ):
+    """
+Train a model and store the trained model to disk
+"""
     print("\n*****\nTraining")
     data = Data(config)
     model = get_model(config)
@@ -34,6 +37,9 @@ def calc_metrics(labels, proba):
 def eval(
     config: dict
 ):
+    """
+Calculate binary classification metrics on the trained model and all data folds
+"""
     print("\n*****\nEvaluation")
     data = Data(config)
     model = get_model(config)

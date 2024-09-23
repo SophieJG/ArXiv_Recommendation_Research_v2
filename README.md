@@ -64,7 +64,7 @@ params:  # Additional model parameters. Catboost doesn't have any
 ```
 
 ### Runner config
-The runner config specifies which parts of the pipeline to run. See, for example, a runner file that executes the complete pipeline (`configs/runner.yml`):
+The runner config specifies which parts of the pipeline to run. See, for example, a runner config file that executes the complete pipeline (`configs/runner.yml`):
 
 ```YAML
 data_queries:
@@ -80,12 +80,12 @@ eval: True
     1. `kaggle_json_to_parquet` Converts the json downloaded from kaggle to parquet and filters not-relevant papers. Currently only CS papers are used.
     2. `query_papers` Query Semantic Scholar to get additional info about all papers
     3. `query_authors` Query Semantic Scholar for all authores who cited a paper from the dataset
-    4. `generate_samples` Generates a list of sample triplets: `<paper_id, author_id, label>`. The label can be true (the author cited the paper) or false.
-2. `train` trains a model and stores the train model to disk
-3. `evaluate` calculates binary classification metrics on the trained model
+    4. `generate_samples` Generate a list of sample triplets: `<paper_id, author_id, label>`. The label can be true (the author cited the paper) or false.
+2. `train` Train a model and store the trained model to disk
+3. `evaluate` Calculate binary classification metrics on the trained model and all data folds
 
 ### Evaluation results
-The output of the evaluation phase is a dictionary providing scores for the train, validation and test data folds. For example:
+The output of the evaluation phase is a dictionary specifying the scores for the train, validation and test data folds. For example:
 ```json
 {
     "train": {
@@ -107,16 +107,16 @@ The output of the evaluation phase is a dictionary providing scores for the trai
 ```
 
 ### The `Data` class
-During training and inference the model receieve a list of pairs `<paper_id, author_id>`. In order to train or perform inference the model needs additional information about the papers and authors. This is achieved using the `Data` class and the function `Data:get_fold()` which associates each author and paper with all the additional relevant info.
+During training and inference the model receieve a list of pairs `<paper_id, author_id>`. In order to train or perform inference the model requires additional information about the papers and authors. This is achieved using the `Data` class and the function `Data:get_fold()` which associates each author and paper with all the additional relevant info.
 
 ### Model
 
 All models must inherit the base class `src/models/base_model.py` and override the 4 following functions:
 
-1. `fit(self, data: Data):` Fit the model on the data. In our case the model includes the preprocessing pipeline as well thus the fitting process entails (i) fitting the preprocessing pipeline; (ii) transforming the raw data into features and (iii) training the model on the processed data
+1. `fit(self, data: Data):` Fit the model on the data. In our case the model includes the preprocessing pipeline thus the fitting process entails (i) fitting the preprocessing pipeline; (ii) using the fitted preprocessing pipeline to transform the raw data into features and (iii) training the model on the processed data
 
 2. `predict_proba(self, data: Data, fold: str):` Do inference which entails preprocessing the raw data into features and running the model. `fold` is a string which can be `train`, `validation` or `test`.
 
-3. `save_(self, path: str):` Save all model files to `path`
+3. `save_(self, path: str):` Save the model as files in the folder `path`
 
-4. `load_(self, path: str):` Load the model from `path`
+4. `load_(self, path: str):` Load the model from the folder `path`
