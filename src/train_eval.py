@@ -20,7 +20,7 @@ def train(
     data = Data(config)
     model = get_model(config)
     model.fit(data)
-    model.save(models_dir(config))
+    model.save(models_dir(config), config["model"]["model"], config["model"]["version"])
 
 
 def calc_metrics(labels, proba):
@@ -37,7 +37,7 @@ def eval(
     print("\n*****\nEvaluation")
     data = Data(config)
     model = get_model(config)
-    model.load(models_dir(config))
+    model.load(models_dir(config), config["model"]["model"], config["model"]["version"])
     metrics = {}
     for fold in ["train", "validation", "test"]:
         proba = model.predict_proba(data, fold)

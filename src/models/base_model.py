@@ -12,23 +12,24 @@ class BaseModel:
 
     def save(
         self,
-        path: str
+        path: str,
+        model: str,
+        version: str
     ):
-        path = os.path.join(path, self.model_name())
-        print(f"Saving {self.model_name()} model to {path}")
+        path = os.path.join(path, f"{model}.{version}")
+        print(f"Saving {model} model to {path}")
         os.makedirs(path, exist_ok=True)
         self.save_(path)
 
     def load(
         self,
-        path: str
+        path: str,
+        model: str,
+        version: str
     ):
-        path = os.path.join(path, self.model_name())
-        print(f"Loading {self.model_name()} model from {path}")
+        path = os.path.join(path, f"{model}.{version}")
+        print(f"Loading {model} model from {path}")
         self.load_(path)
-
-    def model_name(self):
-        raise NotImplementedError("model_name for base_model must be overloaded")
 
     def fit(
         self,

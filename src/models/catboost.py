@@ -19,9 +19,6 @@ class CatboostModel(BaseModel):
         self.model = None
         self.feature_processing_pipeline = None
 
-    def model_name(self):
-        return "catboost.0"
-
     def load_fold(
         self,
         data: Data,
