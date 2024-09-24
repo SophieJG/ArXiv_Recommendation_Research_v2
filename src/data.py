@@ -7,6 +7,9 @@ from util import data_dir, kaggle_data_path, authors_path, papers_path
 
 
 class Data:
+    """
+Main class used to store data for training and evaluation purpose. See the readme for more details.
+"""
     def __init__(self, config: dict) -> None:
         print("Loading Arxiv Kaggle data")
         with open(kaggle_data_path(config)) as f:
@@ -25,6 +28,9 @@ class Data:
         self.test = pd.read_csv(os.path.join(data_dir(config), "test.csv"))
 
     def parse_fold(self, fold: str):
+        """
+Convert the fold string to the fold data
+"""
         assert fold in ["train", "validation", "test"]
         return {
             "train": self.train,
@@ -33,6 +39,15 @@ class Data:
         }[fold]
     
     def get_fold(self, fold: str):
+        """
+This function returns the unstrucuted fold data as a list of samples. Each sample includes:
+(1) paper info as a dictionary
+(2) author info as dictionary
+(3) a boolean label
+
+- In order to guarantee consistency, the author info is "shifted" in time to the year the paper was published. In practice,
+that implies removing all publications by the author that proceed (are after) the paper.
+"""
         fold = self.parse_fold(fold)
         samples = []
         for _, row in tqdm(fold.iterrows(), total=len(fold), desc="Generating samples"):
@@ -41,11 +56,14 @@ class Data:
             kaggle_paper_data = self.kaggle_data.loc[paper_id]
             paper_year = kaggle_paper_data["year_updated"]
             samples.append({
+                # copy all fields from Semantic Scholar except `year` and `citing_authors`
                 **{key: value for key, value in self.papers[paper_id].items() if key not in ["year", "citing_authors"]},
+                # title and categories are taken from the kaggle dataset
                 "title": kaggle_paper_data["title"],
                 "categories": list(kaggle_paper_data["categories"]),
                 "author": {
                     "id": author_id,
+                    # Filter the author's published papers by year
                     "papers": [
                         p for p in self.authors[author_id]["papers"] if p["year"] < paper_year  # Take only papers that precede the recommended paper publication year
                     ]

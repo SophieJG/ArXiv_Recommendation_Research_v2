@@ -31,6 +31,10 @@ def runner(config: dict):
     if config["runner"]["data_queries"]["query_papers"]:
         query_papers(config)
     if config["runner"]["data_queries"]["query_authors"]:
+        # For unknown reason, Semantic Scholar consistently fail on some authors. Thus, we skip batches which return
+        # errors. Since we use large batches, a single errorneous author can cause us to miss the data of many authors.
+        # In order to avoid that, we query the authors several times with decreasing batch sizes, according to
+        # config["data"]["prepare_authors_data_batch_sizes"]
         for batch_size in config["data"]["prepare_authors_data_batch_sizes"]:
             query_authors(config, batch_size)
     if config["runner"]["data_queries"]["generate_samples"]:

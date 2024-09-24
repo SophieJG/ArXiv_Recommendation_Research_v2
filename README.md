@@ -106,8 +106,19 @@ The output of the evaluation phase is a dictionary specifying the scores for the
 }
 ```
 
-### The `Data` class
-During training and inference the model receieve a list of pairs `<paper_id, author_id>`. In order to train or perform inference the model requires additional information about the papers and authors. This is achieved using the `Data` class and the function `Data:get_fold()` which associates each author and paper with all the additional relevant info.
+## Main classes
+
+### The Data class
+
+The `Data` class internally holds three data structures:
+
+1. For each data fold (train/validation/test) a lists of triplets `<paper_id, author_id, label>`. A paper can be in at most one fold. An author can be in more than one fold. The test set could either be the year 2020 or from all years, see data config.
+2. A dictionary of authors info. The key is `author_id`
+3. A dictionary of papers info. The key is `paper_id`
+
+The data should be accessed using the `Data:get_fold()` function which returns a list of samples. Each sample contains the unstrucuted paper and author info.
+
+In order to guarantee consistency, the author info is "shifted" in time to the year the paper was published. In practice, that implies removing all publications by the author that proceed (are after) the paper.
 
 ### Model
 

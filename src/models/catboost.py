@@ -24,7 +24,11 @@ class CatboostModel(BaseModel):
         data: Data,
         fold: str
     ):
+        """
+Loads a fold and converts it to pandas dataframe
+"""
         samples = data.get_fold(fold)
+        # Copy fields from the data dictionaries 
         new_samples = []
         for sample in tqdm(samples, "Converting samples to dataframe"):
             new_sample = {key: sample[key] for key in ["title", "referenceCount", "categories", "label"]}
@@ -88,4 +92,5 @@ class CatboostModel(BaseModel):
         self.model.load_model(os.path.join(path, "model.cbm"), format="cbm")
         with open(os.path.join(path, "pipeline.pkl"), "rb") as f:
             self.feature_processing_pipeline = joblib.load(f)
+
 
