@@ -26,16 +26,19 @@ Main class used to store data for training and evaluation purpose. See the readm
         self.train = pd.read_csv(os.path.join(data_dir(config), "train.csv"))
         self.validation = pd.read_csv(os.path.join(data_dir(config), "validation.csv"))
         self.test = pd.read_csv(os.path.join(data_dir(config), "test.csv"))
+        ranking_fold_path = os.path.join(data_dir(config), "ranking.csv")
+        self.ranking = pd.read_csv(ranking_fold_path) if os.path.exists(ranking_fold_path) else None
 
     def parse_fold(self, fold: str):
         """
 Convert the fold string to the fold data
 """
-        assert fold in ["train", "validation", "test"]
+        assert fold in ["train", "validation", "test", "ranking"]
         return {
             "train": self.train,
             "validation": self.validation,
-            "test": self.test
+            "test": self.test,
+            "ranking": self.ranking
         }[fold]
     
     def get_fold(self, fold: str):
