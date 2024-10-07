@@ -2,7 +2,8 @@ import argparse
 import json
 import yaml
 
-from data_queries import generate_samples, kaggle_json_to_parquet, query_authors, query_papers
+from data_queries import generate_ranking_sample, generate_samples, kaggle_json_to_parquet, query_authors, query_papers
+from ranking import evaluate_ranker, generate_ranking_predictions
 from train_eval import train, eval
 
 
@@ -43,7 +44,13 @@ def runner(config: dict):
         train(config)
     if config["runner"]["eval"]:
         eval(config)
-            
+    if config["runner"]["ranking"]["generate_sample"]:
+        generate_ranking_sample(config)
+    if config["runner"]["ranking"]["generate_predictions"]:
+        generate_ranking_predictions(config)
+    if config["runner"]["ranking"]["evaluate"]:
+        evaluate_ranker(config)
+
 
 if __name__ == '__main__':
     config = load_config()

@@ -5,3 +5,7 @@ data_queries:
   generate_samples: True
 train: True
 eval: True
+ranking:
+  generate_sample: False
+  generate_predictions: False
+  evaluate: False

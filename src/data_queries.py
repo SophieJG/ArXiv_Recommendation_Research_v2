@@ -353,3 +353,43 @@ a random set of papers. See config["data"]["test_is_2020"]
         d.to_csv(os.path.join(data_dir(config), f"{name}.csv"), index=False)
     print("Invalid citing authors:", num_invalid_citing_authors)
     print("num_null_papers:", num_null_papers)
+
+
+def generate_ranking_sample(config: dict):
+    """
+TODO
+"""
+    print("\nGenerating ranking fold")
+    test_papers = pd.read_csv(os.path.join(data_dir(config), "test.csv"))["paper"].unique()
+    print(f"#test papers {len(test_papers)}")
+    with open(papers_path(config)) as f:
+        papers = json.load(f)
+    with open(authors_path(config)) as f:
+        authors = json.load(f)
+    valid_authors = [int(key) for key, value in authors.items() if value is not None]
+    print(f"Valid authors: {len(valid_authors)} / {len(authors)}")
+    
+    test_authors = set()
+    for paper_id in test_papers:  # Go over all papers
+        if paper_id not in papers or papers[paper_id] is None:
+            continue
+        test_authors.update(set(papers[paper_id]["citing_authors"]))
+    print(f"Citing authors: {len(test_authors)}")
+
+    samples = []
+    for paper_id in test_papers:  # Go over all papers
+        if paper_id not in papers or papers[paper_id] is None:
+            continue
+        paper = papers[paper_id]
+        for author in test_authors:
+            samples.append(
+                {
+                    "paper": paper_id,
+                    "author": author,
+                    "label": author in paper["citing_authors"]
+                }
+            )
+    samples = pd.DataFrame.from_records(samples)
+    print(f"#ranking samples: {len(samples)}")
+    print(f"ranking pos ratio: {samples["label"].mean()}")
+    samples.to_csv(os.path.join(data_dir(config), f"ranking.csv"), index=False)
