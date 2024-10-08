@@ -11,22 +11,25 @@ from util import data_dir, models_dir
 
 
 def get_ranker(config):
-    # return RandomRanker({})
-    return SortRanker({})
-    # return {
-    #     "random": RandomRanker(config["ranker"]["params"])
-    # }[config["ranker"]["ranker"]]
+    return {
+        "random": RandomRanker(config["ranker"]["params"]),
+        "sort": SortRanker(config["ranker"]["params"])
+    }[config["ranker"]["ranker"]]
 
 
-def generate_ranking_predictions(config: dict):
+def generate_ranking_predictions(config: dict, batch_size: int = 500000):
     print("\nGenerating predictions for ranking")
     data = Data(config)
     model = get_model(config)
     model.load(models_dir(config), config["model"]["model"], config["model"]["version"])
-    proba = model.predict_proba(data, "ranking")
-    ranking = data.ranking
+    proba = []
+    for idx0 in range(0, len(data.ranking), batch_size):
+        print(f"Working on batch {int(idx0 / batch_size)} / {int(np.ceil(len(data.ranking) / batch_size))}")
+        proba.append(model.predict_proba(data, f"ranking_{idx0}_{idx0 + batch_size}"))
+    proba = np.hstack(proba)
+    ranking = data.ranking.copy()
     ranking["proba"] = proba
-    proba = ranking.copy().pivot(index='author', columns='paper', values=['proba'])
+    proba = ranking.pivot(index='author', columns='paper', values=['proba'])
     proba.columns = [c[1] for c in proba.columns]
     proba.to_parquet(os.path.join(data_dir(config), f"ranking_proba.parquet"))
     labels = ranking[ranking["label"]]
@@ -35,6 +38,7 @@ def generate_ranking_predictions(config: dict):
 
 
 def evaluate_ranker(config: dict):
+    assert config["ranker"] is not None
     ranker = get_ranker(config)
     proba = pd.read_parquet(os.path.join(data_dir(config), f"ranking_proba.parquet"))
     ranked = ranker.rank(proba)
@@ -58,5 +62,3 @@ def evaluate_ranker(config: dict):
         **{f"top_{k}": np.mean(top_k_res[idx]) for idx, k in enumerate(top_k)}
     }
     print(json.dumps(metrics, indent=4))
-    
-    

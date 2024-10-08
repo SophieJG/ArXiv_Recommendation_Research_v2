@@ -12,6 +12,7 @@ def load_config():
     parser.add_argument('data_config', help='Path of the data configuration file')
     parser.add_argument('model_config', help='Path of the model configuration file')
     parser.add_argument('runner_config', help='Path of the runner configuration file')
+    parser.add_argument('ranker_config', help='Path of the ranker configuration file', nargs='?', default=None)
     args = parser.parse_args()
     with open(args.data_config, 'r') as file:
         data_config = yaml.safe_load(file)
@@ -19,10 +20,16 @@ def load_config():
         model_config = yaml.safe_load(file)
     with open(args.runner_config, 'r') as file:
         runner_config = yaml.safe_load(file)
+    if args.ranker_config is not None:
+        with open(args.ranker_config, 'r') as file:
+            ranker_config = yaml.safe_load(file)
+    else:
+        ranker_config = None
     return {
         "data": data_config,
         "model": model_config,
-        "runner": runner_config
+        "runner": runner_config,
+        "ranker": ranker_config
     }
 
 
