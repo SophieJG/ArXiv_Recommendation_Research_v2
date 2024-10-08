@@ -375,6 +375,8 @@ TODO
             continue
         test_authors.update(set(papers[paper_id]["citing_authors"]))
     print(f"Citing authors: {len(test_authors)}")
+    test_authors = test_authors.intersection(set(valid_authors))
+    print(f"Valid citing authors: {len(test_authors)}")
 
     samples = []
     for paper_id in test_papers:  # Go over all papers

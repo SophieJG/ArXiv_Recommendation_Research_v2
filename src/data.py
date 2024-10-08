@@ -33,12 +33,14 @@ Main class used to store data for training and evaluation purpose. See the readm
         """
 Convert the fold string to the fold data
 """
-        assert fold in ["train", "validation", "test", "ranking"]
+        if "ranking" in fold:
+            _, idx0, idx1 = fold.split("_")
+            return self.ranking[int(idx0): int(idx1)]
+        assert fold in ["train", "validation", "test"]
         return {
             "train": self.train,
             "validation": self.validation,
-            "test": self.test,
-            "ranking": self.ranking
+            "test": self.test
         }[fold]
     
     def get_fold(self, fold: str):
