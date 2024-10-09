@@ -1,1 +1,4 @@
 arxiv/
+.env
+__pycache__/
+Data/
