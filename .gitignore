@@ -1,0 +1,14 @@
+# Ignore large files
+data/papers_100/data/authors.json
+data/papers_100/data/kaggle_data.parquet
+assets/arxiv-kaggle-data.json
+
+# Ignore git temporary pack files (optional)
+.git/objects/pack/tmp_pack_*
+
+# Ignore specific directories
+assets/
+catboost_info/
+data/
+src/__pycache__/
+src/models/__pycache__/
