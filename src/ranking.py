@@ -51,14 +51,32 @@ def evaluate_ranker(config: dict):
         paper_ranks.append(author_ranked.index(paper))
     
     top_k = [1, 5, 10, 100]
-    top_k_res = [[], [], [], []]
+    top_k_prec = [[] for _ in range(len(top_k))]
     mrr = []
     for r in paper_ranks:
         mrr.append(1 / (r + 1))
         for idx, k in enumerate(top_k):
-            top_k_res[idx].append(r < k)
+            top_k_prec[idx].append(r < k)
+
+    # Calculate hit metrics. Defined as: for every author did we recommend a paper that was interacted with in the top k
+    author_min_hit = {}
+    for author, paper in zip(labels["author"], labels["paper"]):
+        author_ranked = ranked[author]
+        index = author_ranked.index(paper)
+        if author not in author_min_hit:
+            author_min_hit[author] = index
+        else:
+            author_min_hit[author] = min(author_min_hit[author], index)
+
+    top_k_hit = [0] * len(top_k)
+    for _, min_hit in author_min_hit.items():
+        for idx, k in enumerate(top_k):
+            if min_hit < k:
+                top_k_hit[idx] += 1
+    
     metrics = {
         "mrr": np.mean(mrr),
-        **{f"top_{k}": np.mean(top_k_res[idx]) for idx, k in enumerate(top_k)}
+        **{f"top_{k}": np.mean(top_k_prec[idx]) for idx, k in enumerate(top_k)},
+        **{f"hit_{k}": top_k_hit[idx] / len(author_min_hit) for idx, k in enumerate(top_k)}
     }
     print(json.dumps(metrics, indent=4))
