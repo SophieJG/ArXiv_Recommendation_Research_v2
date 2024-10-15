@@ -1,4 +1,4 @@
-ranker: "sort"  # Which model to train
+ranker: "sort"  # Which ranker to use
 version: "0.0.0"  # Should be used when changing parameters, preprocessing etc.
 params:  # Additional ranker parameters, sort ranker doesn't have any
   dummy: 0
