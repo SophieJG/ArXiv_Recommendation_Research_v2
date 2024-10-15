@@ -60,11 +60,14 @@ that implies removing all publications by the author that proceed (are after) th
             author_id = str(row["author"])
             kaggle_paper_data = self.kaggle_data.loc[paper_id]
             paper_year = kaggle_paper_data["year_updated"]
+            paper_data = self.papers[paper_id]
+            abstract = paper_data.get("abstract", "")
             samples.append({
                 # copy all fields from Semantic Scholar except `year` and `citing_authors`
                 **{key: value for key, value in self.papers[paper_id].items() if key not in ["year", "citing_authors"]},
                 # title and categories are taken from the kaggle dataset
                 "title": kaggle_paper_data["title"],
+                "abstract": abstract,
                 "categories": list(kaggle_paper_data["categories"]),
                 "author": {
                     "id": author_id,
