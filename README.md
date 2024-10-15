@@ -43,7 +43,7 @@ For example (`configs/data_100.yml`):
 ```YAML
 arxiv_json_path: "/home/loaner/workspace/data/arxiv-metadata-oai-snapshot.json"  # Path to the file downloaded from kaggle
 base_path: "/tmp/arxiv/papers_100/"  # Path to store data and models
-test_is_2020: True  # Whether the test set is the year 2020 or random papers from all years
+test_is_2020: True  # When this flag is set to true the test set is the year 2020, validation is 2019 and the rest is training. Otherwise the splits are random
 start_year: 2011  # papers included in datasets are all papers where year >= `start_year`
 end_year: 2021  # papers included in datasets are all papers where year < `end_year`
 cication_years: 3  # In order to be considered a positive sample, a citation needs to be in the `cication_years` years after the paper publication

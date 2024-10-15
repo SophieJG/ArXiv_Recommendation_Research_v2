@@ -336,11 +336,12 @@ a random set of papers. See config["data"]["test_is_2020"]
     if config["data"]["test_is_2020"]:
         # Test set is the year 2020
         test = samples[samples["year"] == 2020]
-        train_validation_samples = samples[samples["year"] < 2020]
+        validation = samples[(samples["year"] >= 2019) & (samples["year"] < 2020)]
+        train = samples[samples["year"] < 2019]
     else:
         # Test set is randomly selected from all years
         train_validation_samples, test = split_by_paper(samples, test_size=0.2)
-    train, validation = split_by_paper(train_validation_samples, test_size=0.2)
+        train, validation = split_by_paper(train_validation_samples, test_size=0.2)
     for d, name in [(train, "train"), (validation, "validation"), (test, "test")]:
         print(f"{name}:", len(d))
         d = d.drop("year", axis=1)
