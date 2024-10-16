@@ -37,11 +37,21 @@ def generate_ranking_predictions(config: dict, batch_size: int = 500000):
     labels.to_parquet(os.path.join(data_dir(config), f"ranking_labels.parquet"))
 
 
+def load_embeddings(config: dict):
+    tmp = np.load(os.path.join(data_dir(config), "ranking_papers.npz"))
+    paper_ids = tmp["paper_ids"]
+    embeddings = tmp["embeddings"]
+    return {
+        paper_ids[idx]: embeddings[idx, :] for idx in range(len(paper_ids))
+    }
+
+
 def evaluate_ranker(config: dict):
     assert config["ranker"] is not None
     ranker = get_ranker(config)
     proba = pd.read_parquet(os.path.join(data_dir(config), f"ranking_proba.parquet"))
-    ranked = ranker.rank(proba)
+    paper_embeddings = load_embeddings(config)
+    ranked = ranker.rank(proba, paper_embeddings)
     labels = pd.read_parquet(os.path.join(data_dir(config), f"ranking_labels.parquet"))
     
     # Calculate standard ranking metrics e.g. perc top k

@@ -4,6 +4,7 @@ import yaml
 
 from data_queries import generate_ranking_sample, generate_samples, kaggle_json_to_parquet, query_authors, query_papers
 from ranking import evaluate_ranker, generate_ranking_predictions
+from paper_embedding import fit_paper_embedding, generate_paper_embeddings
 from train_eval import train, eval
 
 
@@ -47,14 +48,18 @@ def runner(config: dict):
             query_authors(config, batch_size)
     if config["runner"]["data_queries"]["generate_samples"]:
         generate_samples(config)
+    if config["runner"]["paper_embedding"]["fit"]:
+        fit_paper_embedding(config)
     if config["runner"]["train"]:
         train(config)
     if config["runner"]["eval"]:
         eval(config)
-    if config["runner"]["ranking"]["generate_sample"]:
+    if config["runner"]["ranking"]["generate_samples"]:
         generate_ranking_sample(config)
     if config["runner"]["ranking"]["generate_predictions"]:
         generate_ranking_predictions(config)
+    if config["runner"]["ranking"]["generate_paper_embeddings"]:
+        generate_paper_embeddings(config)
     if config["runner"]["ranking"]["evaluate"]:
         evaluate_ranker(config)
 

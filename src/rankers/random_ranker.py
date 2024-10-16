@@ -9,7 +9,8 @@ class RandomRanker(BaseRanker):
 
     def rank(
         self,
-        proba: pd.DataFrame
+        proba: pd.DataFrame,
+        paper_embeddings: dict
     ):
         ranked = {}
         for author, row in proba.iterrows():
