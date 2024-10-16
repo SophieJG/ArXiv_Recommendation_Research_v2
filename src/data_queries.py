@@ -194,7 +194,7 @@ Query Semantic Scholar to get info about all papers
     batch_query(
         json_save_path=papers_path(config),
         query_ids=[f"ARXIV:{id}" for id in kaggle_data["id"]],
-        batch_size=50,
+        batch_size=100,
         query_fields="year,abstract,authors,referenceCount,references.authors,citations.year,citations.authors",
         query_url="https://api.semanticscholar.org/graph/v1/paper/batch",
         process_response_f=process_paper_response,
