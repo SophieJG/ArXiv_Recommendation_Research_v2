@@ -14,3 +14,6 @@ def authors_path(config: dict):
 
 def kaggle_data_path(config: dict):
     return os.path.join(data_dir(config), "kaggle_data.parquet")
+
+def passthrough_func(x):
+    return x

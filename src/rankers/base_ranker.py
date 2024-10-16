@@ -1,3 +1,6 @@
+import pandas as pd
+
+
 class BaseRanker:
     def __init__(
         self,
@@ -6,7 +9,8 @@ class BaseRanker:
         pass
 
     def rank(
-        self
+        self,
+        proba: pd.DataFrame,
+        paper_embeddings: dict
     ):
         raise NotImplementedError("rank for BaseRanker must be overloaded")
-        pass

@@ -8,10 +8,7 @@ from catboost import CatBoostClassifier
 
 from data import Data
 from models.base_model import BaseModel
-
-
-def passthrough_func(x):
-    return x
+from util import passthrough_func
 
 
 class CatboostModel(BaseModel):

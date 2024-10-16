@@ -3,9 +3,12 @@ data_queries:
   query_papers: False
   query_authors: False
   generate_samples: False
+paper_embedding:
+  fit: False
 train: False
 eval: False
 ranking:
-  generate_sample: False
+  generate_samples: False
   generate_predictions: False
+  generate_paper_embeddings: False
   evaluate: True
