@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import joblib
+import re
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_extraction.text import CountVectorizer
 from tqdm import tqdm
@@ -12,6 +13,20 @@ from rank_bm25 import BM25Okapi
 
 from util import passthrough_func
 
+def simple_tokenizer(text):
+    """
+    A simple tokenizer that:
+    - Converts text to lowercase
+    - Removes punctuation
+    - Splits text into tokens based on whitespace
+    """
+    # Convert to lowercase
+    text = text.lower()
+    # Remove punctuation using regex
+    text = re.sub(r'[^\w\s]', '', text)
+    # Split into tokens based on whitespace
+    tokens = text.split()
+    return tokens
 
 class CatboostModel(BaseModel):
     def __init__(self, params: dict) -> None:
@@ -51,23 +66,15 @@ dictionaries to rows in a dataframe
             if self.params.get('use_bm25_features', False):
                 # Get the target abstract
                 target_abstract = sample.get('abstract') or ''
-                target_tokens = target_abstract.split()
+                target_tokens = simple_tokenizer(target_abstract) 
                 # Get author's previous abstracts
                 previous_abstracts = [p.get('abstract', '') for p in sample['author']['papers'] if p.get('abstract')]
                 if previous_abstracts:
-                    corpus = [abstract.split() for abstract in previous_abstracts]
+                    corpus = [simple_tokenizer(abstract) for abstract in previous_abstracts] 
                     bm25 = BM25Okapi(corpus)
                     scores = bm25.get_scores(target_tokens)
                     new_sample['bm25_max_score'] = max(scores)
                     new_sample['bm25_avg_score'] = sum(scores) / len(scores)
-
-                    # Print statements to check BM25 scores
-                    # print(f"Sample ID: {sample.get('id', 'N/A')}")
-                    print(f"BM25 Max Score: {new_sample['bm25_max_score']}")
-                    print(f"BM25 Avg Score: {new_sample['bm25_avg_score']}")
-                    # print(f"Target Abstract: {target_abstract}")
-                    # print(f"Previous Abstracts: {previous_abstracts}")
-                    print("---")
                 else:
                     new_sample['bm25_max_score'] = 0.0
                     new_sample['bm25_avg_score'] = 0.0
@@ -120,6 +127,17 @@ dictionaries to rows in a dataframe
         self.model = CatBoostClassifier().fit(
             X_train, y_train, eval_set=[(X_val, y_val)], early_stopping_rounds=10, use_best_model=True
             )
+
+        # Retrieve feature names from the pipeline
+        feature_names = self.feature_processing_pipeline.get_feature_names_out()
+        
+        # Get feature importances from the trained model
+        importances = self.model.get_feature_importance()
+        
+        # Print feature importances
+        print("\nFeature Importances:")
+        for name, importance in zip(feature_names, importances):
+            print(f"Feature: {name}, Importance: {importance}")
 
     def predict_proba(self, data: Data, fold: str):
         """
