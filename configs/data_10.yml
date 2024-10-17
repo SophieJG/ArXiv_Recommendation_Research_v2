@@ -1,0 +1,10 @@
+arxiv_json_path: "Data/arxiv-metadata-oai-snapshot.json"  # Path to the file downloaded from kaggle
+
+base_path: "Data/tmp/arxiv/papers_10/"  # Path to store data and models
+test_is_2020: True  # Whether the test set is the year 2020 or random papers from all years
+start_year: 2011  # papers included in datasets are all papers where year >= `start_year`
+end_year: 2021  # papers included in datasets are all papers where year < `end_year`
+cication_years: 3  # In order to be considered a positive sample, a citation needs to be in the `cication_years` years after the paper publication
+prepare_authors_data_batch_sizes: [10, 5, 1]  # See src/data_queries.py:prepare_authors_data
+num_papers: 10  # Number of papers to include in the dataset. Use 0 to include all papers
+num_negative: 5 # Number of negative samples for each paper

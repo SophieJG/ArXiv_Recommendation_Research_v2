@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import joblib
 from sklearn.compose import ColumnTransformer
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from tqdm import tqdm
 from catboost import CatBoostClassifier
 
@@ -32,7 +32,7 @@ dictionaries to rows in a dataframe
         new_samples = []
         for sample in tqdm(samples, "Converting samples to dataframe"):
             # Copy fields from the data dictionaries 
-            new_sample = {key: sample[key] for key in ["title", "referenceCount", "categories", "label"]}
+            new_sample = {key: sample[key] for key in ["title", "referenceCount", "categories", "label", "abstract"]}
             new_sample["author_num_papers"] = len(sample["author"]["papers"])
             # Go over the author papers and collect the fiefieldsOfStudy and s2FieldsOfStudy into two lists
             # Additionally, the papers' titles are concatenated into a long string
@@ -68,6 +68,7 @@ dictionaries to rows in a dataframe
             ("title", CountVectorizer(), "title"),
             ("author_fieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_fieldsOfStudy"),
             ("author_s2FieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_s2FieldsOfStudy"),
+            ("tfidf", TfidfVectorizer(min_df=5), "abstract")
         ])
         X_train = self.feature_processing_pipeline.fit_transform(X_train)
         print("Training data size:", X_train.shape, " type:", type(X_train))

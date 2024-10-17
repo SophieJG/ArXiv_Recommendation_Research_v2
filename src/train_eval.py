@@ -2,6 +2,7 @@ import json
 import numpy as np
 from data import Data
 from models.catboost import CatboostModel
+from models.mlp import MLPClassifier
 from util import models_dir
 
 from sklearn.metrics import average_precision_score, roc_auc_score, accuracy_score
@@ -9,7 +10,8 @@ from sklearn.metrics import average_precision_score, roc_auc_score, accuracy_sco
 
 def get_model(config):
     return {
-        "catboost": CatboostModel(config["model"]["params"])
+        "catboost": CatboostModel(config["model"]["params"]),
+        "mlp": MLPClassifier(config["model"]["params"])
     }[config["model"]["model"]]
 
 
@@ -24,6 +26,12 @@ Train a model and store the trained model to disk
     model = get_model(config)
     model.fit(data)
     model.save(models_dir(config), config["model"]["model"], config["model"]["version"])
+    metrics = {}
+    for fold in ["train", "validation", "test"]:
+        proba = model.predict_proba(data, fold)
+        labels = data.parse_fold(fold)["label"]
+        metrics[fold] = calc_metrics(labels, proba)
+    print(json.dumps(metrics, indent=4))
 
 
 def calc_metrics(labels, proba):

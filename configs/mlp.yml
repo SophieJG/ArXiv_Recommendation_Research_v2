@@ -1,0 +1,4 @@
+model: "mlp"  # Which model to train
+version: "0.0.0"  # Should be used when changing parameters, preprocessing etc.
+params:  # Additional model parameters, Catboost doesn't have any
+  dummy: 0

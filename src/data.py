@@ -68,6 +68,7 @@ that implies removing all publications by the author that proceed (are after) th
                         p for p in self.authors[author_id]["papers"] if p["year"] < paper_year  # Take only papers that precede the recommended paper publication year
                     ]
                 },
+                "abstract": kaggle_paper_data["abstract"],
                 "label": row["label"]
             })
         return samples

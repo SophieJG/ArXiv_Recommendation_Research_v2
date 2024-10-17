@@ -36,7 +36,7 @@ Converts the json downloaded from kaggle to parquet and filters not-relevant pap
                         kaggle_data.append(l)
                         break
         kaggle_data = pd.DataFrame(kaggle_data)
-        print(f"Filtering relevant years (year < {config["data"]["end_year"]}) & (year >= {config["data"]["start_year"]})")
+        print(f"Filtering relevant years (year < {config['data']['end_year']}) & (year >= {config['data']['start_year']})")
         kaggle_data['update_date'] = pd.to_datetime(kaggle_data['update_date'])
         kaggle_data['year_updated'] = kaggle_data['update_date'].dt.year
         kaggle_data = kaggle_data[(kaggle_data["year_updated"] < config["data"]["end_year"]) & (kaggle_data["year_updated"] >= config["data"]["start_year"])]
@@ -163,7 +163,7 @@ process_response_f: the function that is used to process the query response
         json.dump(data, f, indent=4)
 
     print(f"Successfully queried {len(data)} out of {len(query_ids)}")
-
+    
 
 def query_papers(config: dict):
     """
@@ -193,8 +193,8 @@ Query Semantic Scholar to get info about all papers
     batch_query(
         json_save_path=papers_path(config),
         query_ids=[f"ARXIV:{id}" for id in kaggle_data["id"]],
-        batch_size=100,
-        query_fields="year,authors,referenceCount,references.authors,citations.year,citations.authors",
+        batch_size=10,
+        query_fields="year,authors,abstract,referenceCount,references.authors,citations.year,citations.authors,embedding.specter_v2",
         query_url="https://api.semanticscholar.org/graph/v1/paper/batch",
         process_response_f=process_paper_response,
         citation_years=config["data"]["cication_years"]  # Additional arg for process_paper_response - passed using **kwargs
@@ -231,7 +231,7 @@ Query Semantic Scholar for all authores who cited a paper from the dataset
         # Process Semantic Scholar data for an author
         papers = [
             {
-                **{key: paper[key] for key in ["year", "title", "fieldsOfStudy"]},
+                **{key: paper[key] for key in ["year", "title", "fieldsOfStudy", "abstract"]},
                 "s2FieldsOfStudy": list(set([tmp["category"] for tmp in paper["s2FieldsOfStudy"] if tmp["category"] is not None]))
             }
             for paper in j["papers"] if paper["year"] is not None
@@ -245,7 +245,7 @@ Query Semantic Scholar for all authores who cited a paper from the dataset
         json_save_path=authors_path(config),
         query_ids=list(citing_authors),
         batch_size=batch_size,
-        query_fields="papers.year,papers.title,papers.fieldsOfStudy,papers.s2FieldsOfStudy",
+        query_fields="papers.year,papers.title,papers.fieldsOfStudy,papers.s2FieldsOfStudy,papers.abstract",
         query_url="https://api.semanticscholar.org/graph/v1/author/batch",
         process_response_f=process_author_response
     )
