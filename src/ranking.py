@@ -7,7 +7,7 @@ from data import Data
 from rankers.random_ranker import RandomRanker
 from rankers.sort_ranker import SortRanker
 from train_eval import get_model
-from util import data_dir, models_dir
+from util import data_dir, mean_consine_distance, models_dir
 
 
 def get_ranker(config):
@@ -87,14 +87,13 @@ def evaluate_ranker(config: dict):
             if min_hit < k:
                 top_k_hit[idx] += 1
     
-    diversity_k = [10]
+    diversity_k = [5, 10, 100]
     diversity = []
     for k in diversity_k:
         authors_diversity = []
         for ranked_papers in ranked.values():
-            embeddings = np.vstack([paper_embeddings[paper] for paper in ranked_papers[:k]])
-            distance = np.mean(np.matmul(embeddings, embeddings.transpose()))
-            authors_diversity.append(distance)
+            embeddings = [paper_embeddings[paper] for paper in ranked_papers[:k]]
+            authors_diversity.append(mean_consine_distance(embeddings))
         diversity.append(1. - np.mean(authors_diversity))
 
     metrics = {
