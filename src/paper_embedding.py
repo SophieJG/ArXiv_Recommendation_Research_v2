@@ -46,5 +46,7 @@ def generate_paper_embeddings(config: dict):
     data = Data(config)
     papers = get_papers(data, data.test)
     embeddings = embedder.embed(papers).toarray()
+    # Normalize embeddings
+    embeddings = embeddings / np.sqrt(np.square(embeddings).sum(axis=1))[:, np.newaxis]
     paper_ids = np.array([paper["id"] for paper in papers])
     np.savez(os.path.join(data_dir(config), "ranking_papers.npz"), paper_ids=paper_ids, embeddings=embeddings)
