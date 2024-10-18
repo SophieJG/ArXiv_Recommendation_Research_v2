@@ -37,10 +37,12 @@ def generate_ranking_predictions(config: dict, batch_size: int = 500000):
     labels.to_parquet(os.path.join(data_dir(config), f"ranking_labels.parquet"))
 
 
-def load_embeddings(config: dict):
+def load_embeddings(config: dict, normalize: bool):
     tmp = np.load(os.path.join(data_dir(config), "ranking_papers.npz"))
     paper_ids = tmp["paper_ids"]
     embeddings = tmp["embeddings"]
+    if normalize:
+        embeddings = embeddings / np.sqrt(np.square(embeddings).sum(axis=1))[:, np.newaxis]
     return {
         paper_ids[idx]: embeddings[idx, :] for idx in range(len(paper_ids))
     }
@@ -50,7 +52,7 @@ def evaluate_ranker(config: dict):
     assert config["ranker"] is not None
     ranker = get_ranker(config)
     proba = pd.read_parquet(os.path.join(data_dir(config), f"ranking_proba.parquet"))
-    paper_embeddings = load_embeddings(config)
+    paper_embeddings = load_embeddings(config, normalize=True)
     ranked = ranker.rank(proba, paper_embeddings)
     labels = pd.read_parquet(os.path.join(data_dir(config), f"ranking_labels.parquet"))
     
@@ -84,9 +86,20 @@ def evaluate_ranker(config: dict):
             if min_hit < k:
                 top_k_hit[idx] += 1
     
+    diversity_k = [10]
+    diversity = []
+    for k in diversity_k:
+        authors_diversity = []
+        for ranked_papers in ranked.values():
+            embeddings = np.vstack([paper_embeddings[paper] for paper in ranked_papers[:k]])
+            distance = np.mean(np.matmul(embeddings, embeddings.transpose()))
+            authors_diversity.append(distance)
+        diversity.append(1. - np.mean(authors_diversity))
+
     metrics = {
-        "mrr": np.mean(mrr),
-        **{f"top_{k}": np.mean(top_k_prec[idx]) for idx, k in enumerate(top_k)},
-        **{f"hit_{k}": top_k_hit[idx] / len(author_min_hit) for idx, k in enumerate(top_k)}
+        "MRR": np.mean(mrr),
+        **{f"Precision @ {k}": np.mean(top_k_prec[idx]) for idx, k in enumerate(top_k)},
+        **{f"Hit rate @ {k}": top_k_hit[idx] / len(author_min_hit) for idx, k in enumerate(top_k)},
+        **{f"Diversity @ {k}": diversity[idx] for idx, k in enumerate(diversity_k)},
     }
     print(json.dumps(metrics, indent=4))
