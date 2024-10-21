@@ -1,0 +1,4 @@
+embedder: "category"  # Which embedder to use
+version: "0.0.0"  # Should be used when changing parameters, preprocessing etc.
+params:  # Additional embedder parameters, category embedder doesn't have any
+  dummy: 0
