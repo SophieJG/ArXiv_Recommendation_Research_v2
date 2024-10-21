@@ -11,7 +11,7 @@ class BaseRanker:
 
     def rank(
         self,
-        proba: pd.DataFrame,
+        utility: pd.DataFrame,
         paper_embeddings: dict
     ):
         raise NotImplementedError("rank for BaseRanker must be overloaded")

@@ -39,7 +39,7 @@ Additional configuration files may be required:
 
 For example, a run including all configuration files:
 ```bash
-python src/runner.py configs/runner.yml configs/data_1000.yml --model-config configs/catboost.yml --embedder-config configs/category_embedder.yml --ranker-config configs/sort_ranker.yml
+python src/runner.py configs/runner.yml configs/data_1000.yml --model-config configs/catboost.yml --embedder-config configs/category_embedder.yml --ranker-config configs/utility_ranker.yml
 ```
 
 ### Runner config

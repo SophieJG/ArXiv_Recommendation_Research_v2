@@ -29,6 +29,9 @@ def get_papers(data: Data, fold: pd.DataFrame):
     return papers
 
 def fit_paper_embedding(config: dict):
+    """
+Fit a paper embedder on the train data and store to disk
+"""
     print("\nFitting paper embeddings")
     data = Data(config)
     train_papers = get_papers(data, data.train)
@@ -38,6 +41,9 @@ def fit_paper_embedding(config: dict):
 
 
 def generate_paper_embeddings(config: dict):
+    """
+Generate paper embeddings for all papers in the test set
+"""
     print("\nGenerating paper embeddings")
     embedder = get_paper_embedder(config)
     embedder.load(models_dir(config), config["embedder"]["embedder"], config["embedder"]["version"])
