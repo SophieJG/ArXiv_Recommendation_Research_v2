@@ -3,7 +3,7 @@ import json
 import yaml
 
 from data_queries import generate_ranking_sample, generate_samples, kaggle_json_to_parquet, query_authors, query_papers
-from ranking import evaluate_ranker, generate_ranking_predictions
+from ranking import evaluate_ranker, generate_utility_predictions
 from paper_embedding import fit_paper_embedding, generate_paper_embeddings
 from train_eval import train, eval
 
@@ -55,7 +55,7 @@ def runner(config: dict):
     if config["runner"]["ranking"]["generate_samples"]:
         generate_ranking_sample(config)
     if config["runner"]["ranking"]["generate_predictions"]:
-        generate_ranking_predictions(config)
+        generate_utility_predictions(config)
     if config["runner"]["ranking"]["generate_paper_embeddings"]:
         generate_paper_embeddings(config)
     if config["runner"]["ranking"]["evaluate"]:

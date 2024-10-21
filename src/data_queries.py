@@ -357,7 +357,8 @@ a random set of papers. See config["data"]["test_is_2020"]
 
 def generate_ranking_sample(config: dict):
     """
-TODO
+Generate the data sample used for ranking. These are all papers in the test fold and all authors who 
+interacted with at least one paper in the test fold
 """
     print("\nGenerating ranking fold")
     test_papers = pd.read_csv(os.path.join(data_dir(config), "test.csv"))["paper"].unique()

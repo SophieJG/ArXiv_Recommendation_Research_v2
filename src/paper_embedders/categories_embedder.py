@@ -9,6 +9,9 @@ from util import passthrough_func
 
 
 class CategoriesEmbedder(BaseEmbedder):
+    """
+Creates paper embedding by applying bag of words on the `categories` field. Note that a paper can have several categories.
+"""
     def __init__(
         self,
         params: dict
@@ -19,6 +22,7 @@ class CategoriesEmbedder(BaseEmbedder):
         self,
         papers: list
     ):
+        # A helper function which converts a list of papers to pd.DataFrame        
         samples = []
         for paper in tqdm(papers, "Converting papers to dataframe"):
             samples.append({
@@ -30,6 +34,7 @@ class CategoriesEmbedder(BaseEmbedder):
         self,
         papers: list
     ):
+        # Fit the sklearn pipeline on the data
         df = self.papers_to_dataframe(papers)
         self.pipeline = ColumnTransformer([
             ("categories", CountVectorizer(analyzer=passthrough_func), "categories")
@@ -40,6 +45,7 @@ class CategoriesEmbedder(BaseEmbedder):
         self,
         papers: list
     ):
+        # Apply the sklearn pipeline on the data
         return self.pipeline.transform(self.papers_to_dataframe(papers))
 
     def save_(

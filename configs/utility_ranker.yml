@@ -1,0 +1,4 @@
+ranker: "utility"  # Which ranker to use
+version: "0.0.0"  # Should be used when changing parameters, preprocessing etc.
+params:  # Additional ranker parameters, utility ranker doesn't have any
+  dummy: 0
