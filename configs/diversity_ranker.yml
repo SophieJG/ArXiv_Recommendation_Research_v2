@@ -1,0 +1,4 @@
+ranker: "diversity"  # Which ranker to use
+version: "0.0.0"  # Should be used when changing parameters, preprocessing etc.
+params:  # Additional ranker parameters
+  lambda: 0.05
