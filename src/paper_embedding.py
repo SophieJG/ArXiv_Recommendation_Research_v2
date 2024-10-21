@@ -8,10 +8,10 @@ from util import data_dir, models_dir
 
 
 def get_paper_embedder(config):
-    return CategoriesEmbedder({})
+    assert config["embedder"] is not None, "Embedder config is required"
     return {
-        "categories": CategoriesEmbedder(config["paper_embedder"]["params"])
-    }[config["paper_embedder"]["model"]]
+        "category": CategoriesEmbedder(config["embedder"]["params"])
+    }[config["embedder"]["embedder"]]
 
 
 def get_papers(data: Data, fold: pd.DataFrame):
@@ -34,15 +34,13 @@ def fit_paper_embedding(config: dict):
     train_papers = get_papers(data, data.train)
     embedder = get_paper_embedder(config)
     embedder.fit(train_papers)
-    embedder.save(models_dir(config), "paper_embed", "0.0")
-    # embedder.save(models_dir(config), config["model"]["model"], config["model"]["version"])
+    embedder.save(models_dir(config), config["embedder"]["embedder"], config["embedder"]["version"])
 
 
 def generate_paper_embeddings(config: dict):
     print("\nGenerating paper embeddings")
     embedder = get_paper_embedder(config)
-    embedder.load(models_dir(config), "paper_embed", "0.0")
-    # embedder.load(models_dir(config), config["model"]["model"], config["model"]["version"])
+    embedder.load(models_dir(config), config["embedder"]["embedder"], config["embedder"]["version"])
     data = Data(config)
     papers = get_papers(data, data.test)
     embeddings = embedder.embed(papers).toarray()

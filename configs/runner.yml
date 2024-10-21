@@ -1,14 +1,15 @@
 data_queries:
-  kaggle_json_to_parquet: False
-  query_papers: False
-  query_authors: False
-  generate_samples: False
+  kaggle_json_to_parquet: True  # Prerequisite: None
+  query_papers: True  # Prerequisite: data_queries/kaggle_json_to_parquet
+  query_authors: True  # Prerequisite: data_queries/query_papers
+  generate_samples: True  # Prerequisite: data_queries/query_authors
 paper_embedding:
-  fit: False
-train: False
-eval: False
+  fit: False  # Prerequisite: data_queries
+model:
+  train: True  # Prerequisite: data_queries
+  eval: True  # Prerequisite: model/train
 ranking:
-  generate_samples: False
-  generate_predictions: False
-  generate_paper_embeddings: False
-  evaluate: True
+  generate_samples: False  # Prerequisite: data_queries
+  generate_predictions: False  # Prerequisite: ranking/generate_samples & model/train
+  generate_paper_embeddings: False  # Prerequisite: ranking/generate_samples & paper_embedding/fit
+  evaluate: False  # Prerequisite: ranking/generate_predictions & ranking/generate_paper_embeddings

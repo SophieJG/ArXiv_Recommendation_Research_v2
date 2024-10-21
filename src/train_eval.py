@@ -8,6 +8,7 @@ from sklearn.metrics import average_precision_score, roc_auc_score, accuracy_sco
 
 
 def get_model(config):
+    assert config["model"] is not None, "Model config is required"
     return {
         "catboost": CatboostModel(config["model"]["params"])
     }[config["model"]["model"]]
