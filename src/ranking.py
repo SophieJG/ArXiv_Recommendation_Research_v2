@@ -12,6 +12,7 @@ from util import data_dir, mean_consine_distance, models_dir
 
 
 def get_ranker(config, items_to_rank: int):
+    assert config["ranker"] is not None, "Ranker config is required"
     return {
         "random": RandomRanker,
         "sort": SortRanker,
@@ -61,7 +62,6 @@ def safe_index(l: list, key: str):
 
 
 def evaluate_ranker(config: dict):
-    assert config["ranker"] is not None
     top_k = config["data"]["top_k"]
     items_to_rank = max(top_k)
 

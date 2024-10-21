@@ -8,29 +8,27 @@ from paper_embedding import fit_paper_embedding, generate_paper_embeddings
 from train_eval import train, eval
 
 
+def load_if_exists(path: str):
+    if path is not None:
+        with open(path, 'r') as file:
+            return yaml.safe_load(file)
+    return None
+
+
 def load_config():
     parser = argparse.ArgumentParser()
-    parser.add_argument('data_config', help='Path of the data configuration file')
-    parser.add_argument('model_config', help='Path of the model configuration file')
     parser.add_argument('runner_config', help='Path of the runner configuration file')
-    parser.add_argument('ranker_config', help='Path of the ranker configuration file', nargs='?', default=None)
+    parser.add_argument('data_config', help='Path of the data configuration file')
+    parser.add_argument('--embedder-config', help='Path of the embedder configuration file')
+    parser.add_argument('--model-config', help='Path of the model configuration file')
+    parser.add_argument('--ranker-config', help='Path of the ranker configuration file')
     args = parser.parse_args()
-    with open(args.data_config, 'r') as file:
-        data_config = yaml.safe_load(file)
-    with open(args.model_config, 'r') as file:
-        model_config = yaml.safe_load(file)
-    with open(args.runner_config, 'r') as file:
-        runner_config = yaml.safe_load(file)
-    if args.ranker_config is not None:
-        with open(args.ranker_config, 'r') as file:
-            ranker_config = yaml.safe_load(file)
-    else:
-        ranker_config = None
     return {
-        "data": data_config,
-        "model": model_config,
-        "runner": runner_config,
-        "ranker": ranker_config
+        "runner": load_if_exists(args.runner_config),
+        "data": load_if_exists(args.data_config),
+        "embedder": load_if_exists(args.embedder_config),
+        "model": load_if_exists(args.model_config),
+        "ranker": load_if_exists(args.ranker_config)
     }
 
 
@@ -50,9 +48,9 @@ def runner(config: dict):
         generate_samples(config)
     if config["runner"]["paper_embedding"]["fit"]:
         fit_paper_embedding(config)
-    if config["runner"]["train"]:
+    if config["runner"]["model"]["train"]:
         train(config)
-    if config["runner"]["eval"]:
+    if config["runner"]["model"]["eval"]:
         eval(config)
     if config["runner"]["ranking"]["generate_samples"]:
         generate_ranking_sample(config)
