@@ -4,6 +4,7 @@ import pandas as pd
 class BaseRanker:
     def __init__(
         self,
+        items_to_rank: int,
         params: dict
     ):
         pass

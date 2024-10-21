@@ -4,7 +4,7 @@ from rankers.base_ranker import BaseRanker
 
 
 class RandomRanker(BaseRanker):
-    def __init__(self, params: dict):
+    def __init__(self, items_to_rank: int, params: dict):
         self.rng = np.random.default_rng(seed=42)
 
     def rank(

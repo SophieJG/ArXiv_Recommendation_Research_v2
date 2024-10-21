@@ -6,15 +6,17 @@ import pandas as pd
 from data import Data
 from rankers.random_ranker import RandomRanker
 from rankers.sort_ranker import SortRanker
+from rankers.diversity_ranker import DiversityRanker
 from train_eval import get_model
 from util import data_dir, mean_consine_distance, models_dir
 
 
-def get_ranker(config):
+def get_ranker(config, items_to_rank: int):
     return {
-        "random": RandomRanker(config["ranker"]["params"]),
-        "sort": SortRanker(config["ranker"]["params"])
-    }[config["ranker"]["ranker"]]
+        "random": RandomRanker,
+        "sort": SortRanker,
+        "diversity": DiversityRanker,
+    }[config["ranker"]["ranker"]](items_to_rank, config["ranker"]["params"])
 
 
 def generate_ranking_predictions(config: dict, batch_size: int = 500000):
@@ -49,21 +51,34 @@ def load_embeddings(config: dict):
     }
 
 
+def safe_index(l: list, key: str):
+    # Return the index of key in l. If key not in l, returns the length of l
+    try:
+        return l.index(key) 
+    except ValueError:
+        pass
+    return len(l)
+
+
 def evaluate_ranker(config: dict):
     assert config["ranker"] is not None
-    ranker = get_ranker(config)
+    top_k = config["data"]["top_k"]
+    items_to_rank = max(top_k)
+
+    ranker = get_ranker(config, items_to_rank)
     proba = pd.read_parquet(os.path.join(data_dir(config), f"ranking_proba.parquet"))
     paper_embeddings = load_embeddings(config)
     ranked = ranker.rank(proba, paper_embeddings)
     labels = pd.read_parquet(os.path.join(data_dir(config), f"ranking_labels.parquet"))
     
-    # Calculate standard ranking metrics e.g. perc top k
+    # Preprocessing needed in order to calculate standard ranking metrics e.g. precision top k, hit top k
     paper_ranks = []
     for author, paper in zip(labels["author"], labels["paper"]):
         author_ranked = ranked[author]
-        paper_ranks.append(author_ranked.index(paper))
+        assert len(author_ranked) == items_to_rank
+        paper_ranks.append(safe_index(author_ranked, paper))
     
-    top_k = [1, 5, 10, 100]
+    # Calculate precision top k
     top_k_prec = [[] for _ in range(len(top_k))]
     mrr = []
     for r in paper_ranks:
@@ -75,7 +90,7 @@ def evaluate_ranker(config: dict):
     author_min_hit = {}
     for author, paper in zip(labels["author"], labels["paper"]):
         author_ranked = ranked[author]
-        index = author_ranked.index(paper)
+        index = safe_index(author_ranked, paper)
         if author not in author_min_hit:
             author_min_hit[author] = index
         else:
@@ -87,7 +102,7 @@ def evaluate_ranker(config: dict):
             if min_hit < k:
                 top_k_hit[idx] += 1
     
-    diversity_k = [5, 10, 100]
+    diversity_k = top_k
     diversity = []
     for k in diversity_k:
         authors_diversity = []
@@ -97,7 +112,7 @@ def evaluate_ranker(config: dict):
         diversity.append(1. - np.mean(authors_diversity))
 
     metrics = {
-        "MRR": np.mean(mrr),
+        f"MRR (clipped to {items_to_rank})": np.mean(mrr),
         **{f"Precision @ {k}": np.mean(top_k_prec[idx]) for idx, k in enumerate(top_k)},
         **{f"Hit rate @ {k}": top_k_hit[idx] / len(author_min_hit) for idx, k in enumerate(top_k)},
         **{f"Diversity @ {k}": diversity[idx] for idx, k in enumerate(diversity_k)},
