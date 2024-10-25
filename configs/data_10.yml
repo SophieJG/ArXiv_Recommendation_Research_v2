@@ -1,6 +1,6 @@
-arxiv_json_path: "Data/arxiv-metadata-oai-snapshot.json"  # Path to the file downloaded from kaggle
+arxiv_json_path: "/share/garg/sc_arxiv/tmp/arxiv/arxiv-metadata-oai-snapshot.json"  # Path to the file downloaded from kaggle
 
-base_path: "Data/tmp/arxiv/papers_10/"  # Path to store data and models
+base_path: "/share/garg/sc_arxiv/tmp/arxiv/papers_10/"  # Path to store data and models
 test_is_2020: True  # Whether the test set is the year 2020 or random papers from all years
 start_year: 2011  # papers included in datasets are all papers where year >= `start_year`
 end_year: 2021  # papers included in datasets are all papers where year < `end_year`
