@@ -29,8 +29,10 @@ Train a model and store the trained model to disk
     model.fit(data)
     metrics = {}
     for fold in ["train", "validation", "test"]:
-        proba = model.predict_proba(data, fold)
-        labels = data.parse_fold(fold)["label"]
+        print("====================================")
+        print("running on fold: ", fold)
+        proba, labels = model.predict_proba(data, fold)
+        # labels = data.parse_fold(fold)["label"]
         metrics[fold] = calc_metrics(labels, proba)
     print(json.dumps(metrics, indent=4))
     model.save(models_dir(config), config["model"]["model"], config["model"]["version"])
