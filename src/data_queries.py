@@ -294,10 +294,15 @@ a random set of papers. See config["data"]["test_is_2020"]
     with open(authors_path(config)) as f:
         authors = json.load(f)
     valid_authors = [int(key) for key, value in authors.items() if value is not None]
+    print(f"Authors found in Semantic Scholar: {len(valid_authors)} / {len(authors)}")
+    max_author_papers = config["data"]["max_author_papers"]
+    len_before = len(valid_authors)
+    valid_authors = [key for key in valid_authors if len(authors[str(key)]["papers"]) < max_author_papers]
+    print(f"Removed {len_before - len(valid_authors)} authors with more than {max_author_papers} papers")
     print(f"Valid authors: {len(valid_authors)} / {len(authors)}")
 
     # Create the list of samples
-    num_citing_authors_not_found = 0
+    num_invalid_citing_authors = 0
     num_null_papers = 0
     samples = []
     for paper_id, paper in papers.items(): # Go over all papers
@@ -307,7 +312,7 @@ a random set of papers. See config["data"]["test_is_2020"]
         # Positive samples - all authors who cited the paper
         for citing_author in paper["citing_authors"]:
             if citing_author not in valid_authors:
-                num_citing_authors_not_found += 1
+                num_invalid_citing_authors += 1
                 continue
             samples.append(
                 {
@@ -346,5 +351,5 @@ a random set of papers. See config["data"]["test_is_2020"]
         print(f"{name}:", len(d))
         d = d.drop("year", axis=1)
         d.to_csv(os.path.join(data_dir(config), f"{name}.csv"), index=False)
-    print("Citing authors not found in database:", num_citing_authors_not_found)
+    print("Invalid citing authors:", num_invalid_citing_authors)
     print("num_null_papers:", num_null_papers)
