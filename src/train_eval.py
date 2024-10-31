@@ -3,6 +3,7 @@ import numpy as np
 from data import Data
 from models.catboost import CatboostModel
 from models.mlp import MLPClassifier
+from models.regression import RegressionModel
 from util import models_dir
 
 from sklearn.metrics import average_precision_score, roc_auc_score, accuracy_score
@@ -11,7 +12,8 @@ from sklearn.metrics import average_precision_score, roc_auc_score, accuracy_sco
 def get_model(config):
     return {
         "catboost": CatboostModel(config["model"]["params"]),
-        "mlp": MLPClassifier(config["model"]["params"])
+        "mlp": MLPClassifier(config["model"]["params"]),
+        "regression": RegressionModel(config["model"]["params"])
     }[config["model"]["model"]]
 
 
