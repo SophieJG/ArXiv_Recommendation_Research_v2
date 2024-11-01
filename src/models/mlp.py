@@ -7,12 +7,11 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
-from transformers import AutoTokenizer
-from adapters import AutoAdapterModel
-from sklearn.base import BaseEstimator, TransformerMixin
 from tqdm import tqdm
 from data import Data
 from models.base_model import BaseModel
+from models.spector_embed import Specter2EmbeddingsTransformer
+from util import *
 
 def passthrough_func(x):
     return x
@@ -31,61 +30,26 @@ class MLPModel(nn.Module):
         x = self.relu(self.fc2(x))
         x = self.sigmoid(self.fc3(x))
         return x
-    
-class Specter2EmbeddingsTransformer(BaseEstimator, TransformerMixin):
-    def __init__(self, model_name="allenai/specter_plus_plus", adapter_name="allenai/specter2"):
-        # Load the tokenizer and model with the SPECTER2 adapter
-        self.model_name = model_name
-        self.adapter_name = adapter_name
-        self.max_length = 512
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoAdapterModel.from_pretrained(model_name)
-        self.model.load_adapter(adapter_name, set_active=True)
 
-    def fit(self, X, y=None):
-        # No fitting required for this transformer
-        return self
-
-    def transform(self, X, y=None):
-        # Ensure X is converted to a list if it is a pandas Series or other non-list structure
-        if isinstance(X, np.ndarray):
-            X = X.flatten().tolist()  # Convert numpy arrays to a flat list
-        elif hasattr(X, "tolist"):  # Handle pandas series/dataframes
-            X = X.tolist()
-
-        embeddings = []
-        for text in X:
-            if isinstance(text, list):
-                # If text is still a list (in case a list of strings is passed), flatten it into a single string
-                text = " ".join(text)
-            # Tokenize the input, truncating it to the max_length (512 tokens)
-            inputs = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=self.max_length)
-            with torch.no_grad():
-                outputs = self.model(**inputs)
-            # The output is a hidden state from the model, so we average over tokens
-            embedding = torch.mean(outputs.last_hidden_state, dim=1).squeeze().cpu().numpy()
-            embeddings.append(embedding)
-        return np.array(embeddings)
-
-    def get_params(self, deep=True):
-        # Return the parameters to make it compatible with scikit-learn cloning
-        return {"model_name": self.model_name, "adapter_name": self.adapter_name}
-
-    def set_params(self, **params):
-        # Update parameters for compatibility with scikit-learn cloning
-        for param, value in params.items():
-            setattr(self, param, value)
-        # Reload the tokenizer and model when parameters change
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        self.model = AutoAdapterModel.from_pretrained(self.model_name)
-        self.model.load_adapter(self.adapter_name, set_active=True)
-        return self
-    
 class MLPClassifier(BaseModel):
     def __init__(self, params: dict) -> None:
         self.model = None
         self.feature_processing_pipeline = None
         self.input_size = None  # To be dynamically set during training
+        self.params = params
+        # abstract_transformer = Specter2EmbeddingsTransformer()
+
+        # Define the preprocessing pipeline
+        self.feature_processing_pipeline = ColumnTransformer([
+            # ('passthrough', 'passthrough', ["referenceCount", "author_num_papers", "is_cited"]),
+            # ("paper_categories", CountVectorizer(analyzer=passthrough_func), "categories"),
+            # ("title", CountVectorizer(), "title"),
+            # ("author_fieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_fieldsOfStudy"),
+            # ("author_s2FieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_s2FieldsOfStudy"),
+            ("abstract_embedding", Specter2EmbeddingsTransformer(), "abstract"),
+            ("author_paper_embedding", Specter2EmbeddingsTransformer(), "author_paper_abstract")
+        ])
+
 
     def load_fold(self, data: Data, fold: str):
         """
@@ -122,32 +86,46 @@ class MLPClassifier(BaseModel):
         X = df[[col for col in df.columns if col != "label"]]
         y = df["label"]
         return X, y
+    
+    def get_data_transform(self, data: pd.DataFrame, fold, fit: bool):
+        # abstract_transformer = Specter2EmbeddingsTransformer()
+
+        # # Define the preprocessing pipeline
+        # self.feature_processing_pipeline = ColumnTransformer([
+        #     # ('passthrough', 'passthrough', ["referenceCount", "author_num_papers", "is_cited"]),
+        #     # ("paper_categories", CountVectorizer(analyzer=passthrough_func), "categories"),
+        #     # ("title", CountVectorizer(), "title"),
+        #     # ("author_fieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_fieldsOfStudy"),
+        #     # ("author_s2FieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_s2FieldsOfStudy"),
+        #     ("abstract_embedding", abstract_transformer, "abstract"),
+        #     ("author_paper_embedding", abstract_transformer, "author_paper_abstract")
+        # ])
+        print("get_data params", fold, fit)
+        embed_file_path = os.path.join(data_dir(self.params), f"{fold}_embed.csv")
+        X, y = self.load_fold(data, fold)
+        if os.path.exists(embed_file_path):
+            print("Embedding already exist, reading existing file")
+            X = pd.read_csv(embed_file_path)
+            X = X.values
+        else:
+            # Process the data
+            print("Transforming dataframe")
+            if fit:
+                X = self.feature_processing_pipeline.fit_transform(X)
+            else: 
+                X = self.feature_processing_pipeline.transform(X)
+            X_df = pd.DataFrame(X)
+            X_df.to_csv(embed_file_path, index=False)
+            print(f"Transformation Done, X_train saved to {embed_file_path}")
+        return X, y
 
     def fit(self, data: Data):
         """
         1. Fit the preprocessing pipeline on the training data.
         2. Train the MLP model.
         """
-        X_train, y_train = self.load_fold(data, "train")
+        X_train, y_train = self.get_data_transform(data, "train", True)
 
-        abstract_transformer = Specter2EmbeddingsTransformer()
-
-        # Define the preprocessing pipeline
-        self.feature_processing_pipeline = ColumnTransformer([
-            # ('passthrough', 'passthrough', ["referenceCount", "author_num_papers", "is_cited"]),
-            # ("paper_categories", CountVectorizer(analyzer=passthrough_func), "categories"),
-            # ("title", CountVectorizer(), "title"),
-            # ("author_fieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_fieldsOfStudy"),
-            # ("author_s2FieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_s2FieldsOfStudy"),
-            ("abstract_embedding", abstract_transformer, "abstract"),
-            ("author_paper_embedding", abstract_transformer, "author_paper_abstract")
-        ])
-
-        # Process the data
-        print("Transforming dataframe")
-        X_train = self.feature_processing_pipeline.fit_transform(X_train)
-    
-        print("Transformation Done")
         X_train = torch.tensor(X_train, dtype=torch.float32)
         y_train = torch.tensor(y_train.values, dtype=torch.float32)
         print("***** X train shape:", X_train.shape)
@@ -160,7 +138,7 @@ class MLPClassifier(BaseModel):
         optimizer = optim.Adam(self.model.parameters(), lr=0.001)
 
         # Training loop
-        epochs = 50
+        epochs = 15
         for epoch in range(epochs):
             optimizer.zero_grad()
             outputs = self.model(X_train)
@@ -174,9 +152,9 @@ class MLPClassifier(BaseModel):
         Run inference on a fold and return probabilities.
         """
         assert self.model is not None
-        X, _ = self.load_fold(data, fold)
+        X, _ = self.get_data_transform(data, fold, False)
 
-        X = self.feature_processing_pipeline.transform(X)
+        # X = self.feature_processing_pipeline.transform(X)
         X = torch.tensor(X, dtype=torch.float32)
         with torch.no_grad():
             outputs = self.model(X)
