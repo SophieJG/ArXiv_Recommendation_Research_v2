@@ -25,6 +25,7 @@ class Specter2EmbeddingsTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X, y=None):
+        print("Calculating embeddings for SPECTER2 model")
         # Convert X to a list if needed
         if isinstance(X, np.ndarray):
             X = X.flatten().tolist()
@@ -65,6 +66,7 @@ class Specter2EmbeddingsTransformer(BaseEstimator, TransformerMixin):
 
             valid_indices.append(index)
         
+        print("Embedding calculation complete.")
         # Return as a 2D array where each row is a concatenated embedding
         return np.array(filtered_embeddings), valid_indices
 
