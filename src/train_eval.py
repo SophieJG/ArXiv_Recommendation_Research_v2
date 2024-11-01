@@ -11,9 +11,9 @@ from sklearn.metrics import average_precision_score, roc_auc_score, accuracy_sco
 
 def get_model(config):
     return {
-        "catboost": CatboostModel(config["model"]["params"]),
-        "mlp": MLPClassifier(config["model"]["params"]),
-        "regression": RegressionModel(config["model"]["params"])
+        "catboost": CatboostModel(config),
+        "mlp": MLPClassifier(config),
+        "regression": RegressionModel(config)
     }[config["model"]["model"]]
 
 
@@ -21,18 +21,25 @@ def train(
     config: dict
 ):
     """
-Train a model and store the trained model to disk
-"""
-    print("\n*****\nTraining")
+    Train a model and store the trained model to disk
+    """
+    print(f"========================================= Trainig =========================================")
+    # print("\n*****\nTraining")
     data = Data(config)
     model = get_model(config)
+
     model.fit(data)
+
     metrics = {}
+    print(f"========================================= Evaluation in Training =========================================")
     for fold in ["train", "validation", "test"]:
-        print("====================================")
         print("running on fold: ", fold)
-        proba, labels = model.predict_proba(data, fold)
-        # labels = data.parse_fold(fold)["label"]
+        if config['model']['model'] == 'regression':
+            proba, labels= model.predict_proba(data, fold)
+            metrics[fold] = calc_metrics(labels, proba)
+        else:
+            proba = model.predict_proba(data, fold)
+            labels = data.parse_fold(fold)["label"]
         metrics[fold] = calc_metrics(labels, proba)
     print(json.dumps(metrics, indent=4))
     model.save(models_dir(config), config["model"]["model"], config["model"]["version"])
@@ -50,8 +57,8 @@ def eval(
     config: dict
 ):
     """
-Calculate binary classification metrics on the trained model and all data folds
-"""
+    Calculate binary classification metrics on the trained model and all data folds
+    """
     print("\n*****\nEvaluation")
     data = Data(config)
     model = get_model(config)

@@ -29,8 +29,8 @@ Main class used to store data for training and evaluation purpose. See the readm
 
     def parse_fold(self, fold: str):
         """
-Convert the fold string to the fold data
-"""
+        Convert the fold string to the fold data
+        """
         assert fold in ["train", "validation", "test"]
         return {
             "train": self.train,
@@ -40,14 +40,14 @@ Convert the fold string to the fold data
     
     def get_fold(self, fold: str):
         """
-This function returns the unstrucuted fold data as a list of samples. Each sample includes:
-(1) paper info as a dictionary
-(2) author info as dictionary
-(3) a boolean label
+    This function returns the unstrucuted fold data as a list of samples. Each sample includes:
+    (1) paper info as a dictionary
+    (2) author info as dictionary
+    (3) a boolean label
 
-- In order to guarantee consistency, the author info is "shifted" in time to the year the paper was published. In practice,
-that implies removing all publications by the author that proceed (are after) the paper.
-"""
+    - In order to guarantee consistency, the author info is "shifted" in time to the year the paper was published. In practice,
+    that implies removing all publications by the author that proceed (are after) the paper.
+    """
         fold = self.parse_fold(fold)
         samples = []
         for _, row in tqdm(fold.iterrows(), total=len(fold), desc="Generating samples"):

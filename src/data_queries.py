@@ -18,8 +18,10 @@ QUERY_DUMP_INTERVAL = 10
 
 def kaggle_json_to_parquet(config: dict):
     """
-Converts the json downloaded from kaggle to parquet and filters not-relevant papers. Currently only CS papers are used.
-"""
+    Converts the json downloaded from kaggle to parquet and filters not-relevant papers. Currently only CS papers are used.
+    """
+    print("========================================= kaggle to dataframe =========================================")
+
     if os.path.exists(kaggle_data_path(config)):
         print("Kaggle data already converted to parquet - Skipping")
         return
@@ -167,9 +169,10 @@ process_response_f: the function that is used to process the query response
 
 def query_papers(config: dict):
     """
-Query Semantic Scholar to get info about all papers
-"""
-    print("\nQuering Semantic Scholar for papers info")
+    Query Semantic Scholar to get info about all papers
+    """
+    print("========================================= query paper =========================================")
+    # print("\nQuering Semantic Scholar for papers info")
     kaggle_data = pd.read_parquet(kaggle_data_path(config))
 
     if config["data"]["num_papers"] > 0:
@@ -214,7 +217,8 @@ def query_authors(
     """
 Query Semantic Scholar for all authores who cited a paper from the dataset
 """
-    print(f"\nQuering Semantic Scholar for authors info (batch size = {batch_size})")
+    print(f"========================================= query author (batch size = {batch_size}) =========================================")
+    # print(f"\nQuering Semantic Scholar for authors info (batch size = {batch_size})")
     with open(papers_path(config)) as f:
         papers = json.load(f)
     citing_authors = set()
@@ -287,7 +291,8 @@ Negative samples - a random author who did not cite the paper. For each paper th
 The samples are split by paper id i.e. all the samples of a paper will be placed in the same data fold. The test set could be either the year 2020, or
 a random set of papers. See config["data"]["test_is_2020"]
 """
-    print("\nGenerating train, validation and test folds")
+    print(f"========================================= Generating train, validation and test folds =========================================")
+    # print("\nGenerating train, validation and test folds")
     rng = np.random.default_rng(seed=42)
     with open(papers_path(config)) as f:
         papers = json.load(f)
