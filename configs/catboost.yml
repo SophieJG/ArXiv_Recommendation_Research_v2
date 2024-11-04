@@ -1,6 +1,6 @@
 model: 'catboost' # Which model to train
 version: '0.0.0' # Should be used when changing parameters, preprocessing etc.
 params: # Additional model parameters, Catboost doesn't have any
-  use_bm25_features: False # Set to False to disable BM25 features
+  use_bm25_features: True # Set to False to disable BM25 features
   use_abstract_vectorizer: False # Set to False to disable Abstract vectorizer
 
