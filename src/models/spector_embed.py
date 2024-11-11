@@ -14,6 +14,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from tqdm import tqdm
 from data import Data
 from models.base_model import BaseModel
+from concurrent.futures import ThreadPoolExecutor
 
 
 class Specter2EmbeddingsTransformer(BaseEstimator, TransformerMixin):
@@ -44,27 +45,24 @@ class Specter2EmbeddingsTransformer(BaseEstimator, TransformerMixin):
             X = X.tolist()
             
         embed_dict = {}
-        embeddings = []
-        for text in X:
+        def compute_embedding(text):
             if isinstance(text, list):
-                # If text is still a list (in case a list of strings is passed), flatten it into a single string
                 text = " ".join(text)
 
             abstract_hash = self.get_abstract_hash(text)
 
             if abstract_hash not in embed_dict:
-                # Tokenize the input, truncating it to the max_length (512 tokens)
                 inputs = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=self.max_length)
                 with torch.no_grad():
                     outputs = self.model(**inputs)
-                # The output is a hidden state from the model, so we average over tokens
                 embedding = torch.mean(outputs.last_hidden_state, dim=1).squeeze().cpu().numpy()
                 embed_dict[abstract_hash] = embedding
-            else:
-                embedding = embed_dict[abstract_hash]
+            return embed_dict[abstract_hash]
 
-            embeddings.append(embedding)
-            
+        # Use ThreadPoolExecutor to process embeddings in parallel
+        with ThreadPoolExecutor(max_workers=50) as executor:
+            embeddings = list(executor.map(compute_embedding, X))
+
         print("Embedding calculation completed.")
         return np.array(embeddings)
 

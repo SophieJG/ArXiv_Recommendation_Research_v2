@@ -136,6 +136,9 @@ process_response_f: the function that is used to process the query response
                 print(json.dumps(json.loads(response.text), indent=4))
             # Apply exponential delay - according to Semantic Scholar License
             fail_delay = max(QUERY_FAIL_DELAY, fail_delay * QUERY_FAIL_MULT_DELAY)
+            if fail_delay >= 256:
+                print("Sleep time exceed 256 seconds, exiting")
+                break
             print(f" - Sleeping for {fail_delay} seconds")
             time.sleep(fail_delay)
             # For unknown reason, Semantic Scholar consistently fail on some authors. Thus, we skip batches which return

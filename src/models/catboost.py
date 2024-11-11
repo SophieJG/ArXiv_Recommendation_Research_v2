@@ -80,8 +80,8 @@ dictionaries to rows in a dataframe
 
     def predict_proba(self, data: Data, fold: str):
         """
-Run inference on a fold
-"""
+        Run inference on a fold
+        """
         assert self.model is not None
         X, _ = self.load_fold(data, fold)
         X = self.feature_processing_pipeline.transform(X)

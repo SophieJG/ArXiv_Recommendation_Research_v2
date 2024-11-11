@@ -105,18 +105,18 @@ class MLPClassifier(BaseModel):
         X, y = self.load_fold(data, fold)
         if os.path.exists(embed_file_path):
             print("Embedding already exist, reading existing file")
-            X = pd.read_csv(embed_file_path)
-            X = X.values
-        else:
-            # Process the data
-            print("Transforming dataframe")
-            if fit:
-                X = self.feature_processing_pipeline.fit_transform(X)
-            else: 
-                X = self.feature_processing_pipeline.transform(X)
-            X_df = pd.DataFrame(X)
-            X_df.to_csv(embed_file_path, index=False)
-            print(f"Transformation Done, X_train saved to {embed_file_path}")
+            X_embed = pd.read_csv(embed_file_path)
+            if X_embed.shape[1] == X.shape[1]:
+                return X_embed.values, y
+            print("Existing embedding file shape does not match, re-embedding")
+        print("Transforming dataframe")
+        if fit:
+            X = self.feature_processing_pipeline.fit_transform(X)
+        else: 
+            X = self.feature_processing_pipeline.transform(X)
+        X_df = pd.DataFrame(X)
+        X_df.to_csv(embed_file_path, index=False)
+        print(f"Transformation Done, X_train saved to {embed_file_path}")
         return X, y
 
     def fit(self, data: Data):
