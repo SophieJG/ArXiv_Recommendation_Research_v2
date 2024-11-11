@@ -32,7 +32,7 @@ class Specter2EmbeddingsTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def get_abstract_hash(self, abstract):
-        return hashlib.md5(abstract.encode()).hexdigest()
+        return hashlib.sha256(abstract.encode()).hexdigest()
 
 
     def transform(self, X, y=None):
@@ -60,7 +60,7 @@ class Specter2EmbeddingsTransformer(BaseEstimator, TransformerMixin):
             return embed_dict[abstract_hash]
 
         # Use ThreadPoolExecutor to process embeddings in parallel
-        with ThreadPoolExecutor(max_workers=50) as executor:
+        with ThreadPoolExecutor(max_workers=2) as executor:
             embeddings = list(executor.map(compute_embedding, X))
 
         print("Embedding calculation completed.")
