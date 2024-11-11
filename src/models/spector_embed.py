@@ -14,7 +14,8 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from tqdm import tqdm
 from data import Data
 from models.base_model import BaseModel
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
+import threading
 
 
 class Specter2EmbeddingsTransformer(BaseEstimator, TransformerMixin):
@@ -26,6 +27,8 @@ class Specter2EmbeddingsTransformer(BaseEstimator, TransformerMixin):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoAdapterModel.from_pretrained(model_name)
         self.model.load_adapter(adapter_name, set_active=True)
+        self.embed_dict = {} 
+        self.lock = threading.Lock()  # Initialize a lock
 
     def fit(self, X, y=None):
         # No fitting required for this transformer
@@ -37,34 +40,41 @@ class Specter2EmbeddingsTransformer(BaseEstimator, TransformerMixin):
 
     def transform(self, X, y=None):
         print("Calculating embeddings for SPECTER2 model")
-
-        # Ensure X is converted to a list if it is a pandas Series or other non-list structure
         if isinstance(X, np.ndarray):
-            X = X.flatten().tolist()  # Convert numpy arrays to a flat list
-        elif hasattr(X, "tolist"):  # Handle pandas series/dataframes
+            X = X.flatten().tolist()
+        elif hasattr(X, "tolist"):
             X = X.tolist()
-            
-        embed_dict = {}
-        def compute_embedding(text):
-            if isinstance(text, list):
-                text = " ".join(text)
 
-            abstract_hash = self.get_abstract_hash(text)
+        # Use ProcessPoolExecutor for multiprocessing
+        max_workers = os.cpu_count() or 1
+        print(f"Using {max_workers} processes for embedding computation")
 
-            if abstract_hash not in embed_dict:
-                inputs = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=self.max_length)
-                with torch.no_grad():
-                    outputs = self.model(**inputs)
-                embedding = torch.mean(outputs.last_hidden_state, dim=1).squeeze().cpu().numpy()
-                embed_dict[abstract_hash] = embedding
-            return embed_dict[abstract_hash]
-
-        # Use ThreadPoolExecutor to process embeddings in parallel
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            embeddings = list(executor.map(compute_embedding, X))
+        # Use ProcessPoolExecutor with individual memory space to parallelize the embedding computation
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            embeddings = list(executor.map(self.compute_embedding, X))
 
         print("Embedding calculation completed.")
         return np.array(embeddings)
+    
+    def compute_embedding(self, text):
+        # Initialize model and tokenizer within each process
+        tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        model = AutoAdapterModel.from_pretrained(self.model_name)
+        model.load_adapter(self.adapter_name, set_active=True)
+        model.eval()
+        embedding_size = model.config.hidden_size
+
+        if isinstance(text, list):
+            text = " ".join(text)
+        text = text.strip()
+        if not text:
+            return np.zeros(embedding_size)
+
+        inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=self.max_length)
+        with torch.no_grad():
+            outputs = model(**inputs)
+        embedding = torch.mean(outputs.last_hidden_state, dim=1).squeeze().cpu().numpy()
+        return embedding
 
     def get_params(self, deep=True):
         # Return the parameters to make it compatible with scikit-learn cloning
