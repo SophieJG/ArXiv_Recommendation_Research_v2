@@ -24,9 +24,9 @@ class Specter2EmbeddingsTransformer(BaseEstimator, TransformerMixin):
         self.model_name = model_name
         self.adapter_name = adapter_name
         self.max_length = 512
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoAdapterModel.from_pretrained(model_name)
-        self.model.load_adapter(adapter_name, set_active=True)
+        # self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        # self.model = AutoAdapterModel.from_pretrained(model_name)
+        # self.model.load_adapter(adapter_name, set_active=True)
         self.embed_dict = {} 
         self.lock = threading.Lock()  # Initialize a lock
 
