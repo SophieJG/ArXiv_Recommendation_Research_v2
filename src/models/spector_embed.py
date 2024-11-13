@@ -28,7 +28,6 @@ class Specter2EmbeddingsTransformer(BaseEstimator, TransformerMixin):
         # self.model = AutoAdapterModel.from_pretrained(model_name)
         # self.model.load_adapter(adapter_name, set_active=True)
         self.embed_dict = {} 
-        self.lock = threading.Lock()  # Initialize a lock
 
     def fit(self, X, y=None):
         # No fitting required for this transformer
@@ -46,7 +45,7 @@ class Specter2EmbeddingsTransformer(BaseEstimator, TransformerMixin):
             X = X.tolist()
 
         # Use ProcessPoolExecutor for multiprocessing
-        max_workers = os.cpu_count() or 1
+        max_workers = 2 #os.cpu_count() or 1
         print(f"Using {max_workers} processes for embedding computation")
 
         # Use ProcessPoolExecutor with individual memory space to parallelize the embedding computation
