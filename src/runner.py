@@ -2,9 +2,9 @@ import argparse
 import json
 import yaml
 
-from data_queries import generate_ranking_sample, generate_samples, kaggle_json_to_parquet, query_authors, query_papers
 from ranking import evaluate_ranker, generate_utility_predictions
 from paper_embedding import fit_paper_embedding, generate_paper_embeddings
+from semantic_scholar_data import process_papers, process_citations, process_citing_papers, process_authors, kaggle_json_to_parquet, generate_ranking_sample, generate_samples
 from train_eval import train, eval
 
 
@@ -33,25 +33,28 @@ def load_config():
 
 
 def runner(config: dict):
-    if config["runner"]["data_queries"]["kaggle_json_to_parquet"]:
+    if config["runner"]["data"]["kaggle_json_to_parquet"]:
         kaggle_json_to_parquet(config)
-    if config["runner"]["data_queries"]["query_papers"]:
-        query_papers(config)
-    if config["runner"]["data_queries"]["query_authors"]:
-        # For unknown reason, Semantic Scholar consistently fail on some authors. Thus, we skip batches which return
-        # errors. Since we use large batches, a single errorneous author can cause us to miss the data of many authors.
-        # In order to avoid that, we query the authors several times with decreasing batch sizes, according to
-        # config["data"]["prepare_authors_data_batch_sizes"]
-        for batch_size in config["data"]["prepare_authors_data_batch_sizes"]:
-            query_authors(config, batch_size)
-    if config["runner"]["data_queries"]["generate_samples"]:
+    if config["runner"]["data"]["process_papers"]:
+        process_papers(config)
+    if config["runner"]["data"]["process_citations"]:
+        process_citations(config)
+    if config["runner"]["data"]["process_citing_papers"]:
+        process_citing_papers(config)
+    if config["runner"]["data"]["process_authors"]:
+        process_authors(config)
+    if config["runner"]["data"]["generate_samples"]:
         generate_samples(config)
+        
+
     if config["runner"]["paper_embedding"]["fit"]:
         fit_paper_embedding(config)
+
     if config["runner"]["model"]["train"]:
         train(config)
     if config["runner"]["model"]["eval"]:
         eval(config)
+        
     if config["runner"]["ranking"]["generate_samples"]:
         generate_ranking_sample(config)
     if config["runner"]["ranking"]["generate_predictions"]:

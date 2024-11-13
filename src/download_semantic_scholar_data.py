@@ -19,7 +19,7 @@ def get_files(field: str):
         raise RuntimeError("Semantic Scholar API key is None")
 
     response = requests.get(
-            f" https://api.semanticscholar.org/datasets/v1/release/2024-11-05/dataset/{field}",
+            f"https://api.semanticscholar.org/datasets/v1/release/2024-11-05/dataset/{field}",
             headers={'x-api-key': api_key}
         )
     
@@ -43,5 +43,6 @@ def get_files(field: str):
     
 
 if __name__ == '__main__':
+    raise RuntimeError("Are you sure you want to run this? Data is already downloaded. See semantic_scholar_path in data configs")
     for key in ["papers", "authors", "citations", "abstracts"]:
         get_files(key)

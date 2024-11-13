@@ -5,16 +5,16 @@ This package enables the execution of all simulations related to the paper.
 
 ## Installation
 ### Prerequisites
-- Python 3.8 or newer
+- Python 3.12.4 or newer
 - Conda
-- Semantic Scholar API Key
+- Semantic Scholar API Key (required only for downloading Semantic Scholar data)
 
 ### Code installation
 Clone the repository, create a conda environment and install the required dependencies:
 ```bash
 pip clone https://github.com/SophieJG/ArXiv_Recommendation_Research_v2
 cd ArXiv_Recommendation_Research_v2
-conda create --name arxiv
+conda create --name arxiv python=3.12.4
 conda activate arxiv
 pip install -r requirements.txt
 ```

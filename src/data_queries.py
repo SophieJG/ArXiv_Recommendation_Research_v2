@@ -16,33 +16,6 @@ QUERY_FAIL_MULT_DELAY = 2
 QUERY_DUMP_INTERVAL = 10
 
 
-def kaggle_json_to_parquet(config: dict):
-    """
-Converts the json downloaded from kaggle to parquet and filters not-relevant papers. Currently only CS papers are used.
-"""
-    if os.path.exists(kaggle_data_path(config)):
-        print("Kaggle data already converted to parquet - Skipping")
-        return
-    print("\nFiltering and converting Arxiv Kaggle data to Pandas")
-    with open(config["data"]["arxiv_json_path"]) as f:
-        kaggle_data = []
-        for l in tqdm(f.readlines(), "Parsing json"):
-            l = json.loads(l)
-            if "cs." in l["categories"]:
-                categories = l["categories"].split()
-                for c in categories:
-                    if c.startswith("cs"):
-                        l["categories"] = categories
-                        kaggle_data.append(l)
-                        break
-        kaggle_data = pd.DataFrame(kaggle_data)
-        print(f"Filtering relevant years (year < {config["data"]["end_year"]}) & (year >= {config["data"]["start_year"]})")
-        kaggle_data['update_date'] = pd.to_datetime(kaggle_data['update_date'])
-        kaggle_data['year_updated'] = kaggle_data['update_date'].dt.year
-        kaggle_data = kaggle_data[(kaggle_data["year_updated"] < config["data"]["end_year"]) & (kaggle_data["year_updated"] >= config["data"]["start_year"])]
-        os.makedirs(data_dir(config), exist_ok=True)
-        kaggle_data.to_parquet(kaggle_data_path(config))
-        print(kaggle_data)
 
 
 def get_citing_authors(
@@ -172,11 +145,6 @@ Query Semantic Scholar to get info about all papers
     print("\nQuering Semantic Scholar for papers info")
     kaggle_data = pd.read_parquet(kaggle_data_path(config))
 
-    if config["data"]["num_papers"] > 0:
-        # Use only num_papers. If num_papers is 0 - use all papers
-        kaggle_data = kaggle_data.sample(frac=1., random_state=0) # Suffle the papers
-        kaggle_data = kaggle_data[:config["data"]["num_papers"]]
-    
     def process_paper_response(j: dict, **kwargs):
         # Process Semantic Scholar data for a paper
         if j["year"] is None:
@@ -204,7 +172,6 @@ Query Semantic Scholar to get info about all papers
     with open(papers_path(config)) as f:
         papers = json.load(f)
     assert len(papers) == len(kaggle_data)
-
 
 
 def query_authors(
@@ -275,124 +242,3 @@ random_state: int
     return df_train, df_test
 
 
-def generate_samples(config: dict):
-    """
-Generate three lists of samples that will be used for training, validation and evaluation. Each sample is a triplet: `<paper_id, author_id, label>`. The
-label can be true (the author cited the paper) or false.
-
-Positive samples - all cases in which an author cited a paper (in the alloted time)
-Negative samples - a random author who did not cite the paper. For each paper the number of negative samples generated is
-    set by config["data"]["num_negative"]
-
-The samples are split by paper id i.e. all the samples of a paper will be placed in the same data fold. The test set could be either the year 2020, or
-a random set of papers. See config["data"]["test_is_2020"]
-"""
-    print("\nGenerating train, validation and test folds")
-    rng = np.random.default_rng(seed=42)
-    with open(papers_path(config)) as f:
-        papers = json.load(f)
-    with open(authors_path(config)) as f:
-        authors = json.load(f)
-    valid_authors = [int(key) for key, value in authors.items() if value is not None]
-    print(f"Authors found in Semantic Scholar: {len(valid_authors)} / {len(authors)}")
-    max_author_papers = config["data"]["max_author_papers"]
-    len_before = len(valid_authors)
-    valid_authors = [key for key in valid_authors if len(authors[str(key)]["papers"]) < max_author_papers]
-    print(f"Removed {len_before - len(valid_authors)} authors with more than {max_author_papers} papers")
-    print(f"Valid authors: {len(valid_authors)} / {len(authors)}")
-
-    # Create the list of samples
-    num_invalid_citing_authors = 0
-    num_null_papers = 0
-    samples = []
-    for paper_id, paper in papers.items(): # Go over all papers
-        if paper is None:
-            num_null_papers += 1
-            continue
-        # Positive samples - all authors who cited the paper
-        for citing_author in paper["citing_authors"]:
-            if citing_author not in valid_authors:
-                num_invalid_citing_authors += 1
-                continue
-            samples.append(
-                {
-                    "paper": paper_id,
-                    "year": paper["year"],
-                    "author": citing_author,
-                    "label": True
-                }
-            )
-        # Negative samples - a random author who did not cite the paper
-        for author_idx in rng.integers(low=0, high=len(valid_authors), size=config["data"]["num_negative"]):
-            if valid_authors[author_idx] in paper["citing_authors"]:
-                # Actually a positive sample
-                continue
-            samples.append(
-                {
-                    "paper": paper_id,
-                    "year": paper["year"],
-                    "author": valid_authors[author_idx],
-                    "label": False
-                }
-            )
-    samples = pd.DataFrame.from_records(samples)
-    
-    # Split the list of samples to train, validation and test folds
-    if config["data"]["test_is_2020"]:
-        # Test set is the year 2020
-        test = samples[samples["year"] == 2020]
-        validation = samples[(samples["year"] >= 2019) & (samples["year"] < 2020)]
-        train = samples[samples["year"] < 2019]
-    else:
-        # Test set is randomly selected from all years
-        train_validation_samples, test = split_by_paper(samples, test_size=0.2)
-        train, validation = split_by_paper(train_validation_samples, test_size=0.2)
-    for d, name in [(train, "train"), (validation, "validation"), (test, "test")]:
-        print(f"{name}:", len(d))
-        d = d.drop("year", axis=1)
-        d.to_csv(os.path.join(data_dir(config), f"{name}.csv"), index=False)
-    print("Invalid citing authors:", num_invalid_citing_authors)
-    print("num_null_papers:", num_null_papers)
-
-
-def generate_ranking_sample(config: dict):
-    """
-Generate the data sample used for ranking. These are all papers in the test fold and all authors who 
-interacted with at least one paper in the test fold
-"""
-    print("\nGenerating ranking fold")
-    test_papers = pd.read_csv(os.path.join(data_dir(config), "test.csv"))["paper"].unique()
-    print(f"#test papers {len(test_papers)}")
-    with open(papers_path(config)) as f:
-        papers = json.load(f)
-    with open(authors_path(config)) as f:
-        authors = json.load(f)
-    valid_authors = [int(key) for key, value in authors.items() if value is not None]
-    print(f"Valid authors: {len(valid_authors)} / {len(authors)}")
-    
-    test_authors = set()
-    for paper_id in test_papers:  # Go over all papers
-        if paper_id not in papers or papers[paper_id] is None:
-            continue
-        test_authors.update(set(papers[paper_id]["citing_authors"]))
-    print(f"Citing authors: {len(test_authors)}")
-    test_authors = test_authors.intersection(set(valid_authors))
-    print(f"Valid citing authors: {len(test_authors)}")
-
-    samples = []
-    for paper_id in test_papers:  # Go over all papers
-        if paper_id not in papers or papers[paper_id] is None:
-            continue
-        paper = papers[paper_id]
-        for author in test_authors:
-            samples.append(
-                {
-                    "paper": paper_id,
-                    "author": author,
-                    "label": author in paper["citing_authors"]
-                }
-            )
-    samples = pd.DataFrame.from_records(samples)
-    print(f"#ranking samples: {len(samples)}")
-    print(f"ranking pos ratio: {samples["label"].mean()}")
-    samples.to_csv(os.path.join(data_dir(config), f"ranking.csv"), index=False)
