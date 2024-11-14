@@ -7,8 +7,10 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
+from joblib import Parallel, delayed
+import copy
 
-from util import data_dir, kaggle_data_path
+from util import authors_path, data_dir, kaggle_data_path, papers_path
 
 
 def parse_s2fieldsofstudy(fieldsofstudy_list: list):
@@ -28,24 +30,31 @@ def process_paper_data(j: dict, allow_none_year: bool):
     }
 
 
-def load_papers(config: dict, ids: list, id_type: str):
+def process_file(path: str, ids: list, id_type: str):
     ids = [str(id) for id in ids]
+    id_type = copy.deepcopy(id_type)
     assert id_type in ["CorpusId", "ArXiv"]
-    files = glob.glob(os.path.join(config["data"]["semantic_scholar_path"], "papers", "*.gz"))
     papers = {}
-    for idx, f in enumerate(files):
-        if idx >= 5:
-            break
-        with gzip.open(f, "rt", encoding="UTF-8") as fin:
-            for l in tqdm(fin, f"Processing file {idx} / {len(files)}"):
-                j = json.loads(l)
-                if j["externalids"][id_type] not in ids:
-                    continue
-                processed_paper = process_paper_data(j, allow_none_year=False)
-                if processed_paper is None:
-                    continue
-                papers[j["corpusid"]] = processed_paper
-        print(f"#papers = {len(papers)} / {len(ids)}")
+    with gzip.open(path, "rt", encoding="UTF-8") as fin:
+        for l in fin:
+            j = json.loads(l)
+            if j["externalids"][id_type] not in ids:
+                continue
+            processed_paper = process_paper_data(j, allow_none_year=False)
+            if processed_paper is None:
+                continue
+            if id_type == "ArXiv":
+                processed_paper["arxiv_id"] = j["externalids"]["ArXiv"]
+            papers[j["corpusid"]] = processed_paper
+    return papers
+
+
+def load_papers(config: dict, ids: list, id_type: str):
+    files = glob.glob(os.path.join(config["data"]["semantic_scholar_path"], "papers", "*.gz"))
+    paper_lists = Parallel(n_jobs=config["data"]["n_jobs"], verbose=50)(delayed(process_file)(f, ids, id_type) for f in files)
+    papers = {}
+    for pl in paper_lists:
+        papers.update(pl)
     return papers
 
 
@@ -54,18 +63,16 @@ def load_citations(config: dict, ids: list):
     files = glob.glob(os.path.join(config["data"]["semantic_scholar_path"], "citations", "*.gz"))
     citing_papers = defaultdict(lambda: [])
     cited_papers = defaultdict(lambda: [])
-    for idx, f in enumerate(files):
-        if idx >= 5:
-            break
+    for idx, f in enumerate(files[:2]):
         with gzip.open(f, "rt", encoding="UTF-8") as fin:
             for l in tqdm(fin, f"Processing file {idx} / {len(files)}"):
                 j = json.loads(l)
                 if j["citingcorpusid"] is None or j["citedcorpusid"] is None:
                     continue
                 if j["citingcorpusid"] in ids:
-                    citing_papers[j["citingcorpusid"]].append(j["citedcorpusid"])
+                    cited_papers[j["citingcorpusid"]].append(j["citedcorpusid"])
                 if j["citedcorpusid"] in ids:
-                    cited_papers[j["citedcorpusid"]].append(j["citingcorpusid"])
+                    citing_papers[j["citedcorpusid"]].append(j["citingcorpusid"])
         print(f"#citing_papers = {len(citing_papers)}, #cited_papers = {len(cited_papers)}")
     return citing_papers, cited_papers
 
@@ -74,12 +81,12 @@ def load_author_papers(config: dict, ids: list):
     ids = [str(id) for id in ids]
     files = glob.glob(os.path.join(config["data"]["semantic_scholar_path"], "papers", "*.gz"))
     author_papers = defaultdict(lambda: [])
-    for idx, f in enumerate(files):
-        if idx >= 5:
-            break
+    for idx, f in enumerate(files[:2]):
         with gzip.open(f, "rt", encoding="UTF-8") as fin:
             for l in tqdm(fin, f"Processing file {idx} / {len(files)}"):
                 j = json.loads(l)
+                if j["authors"] is None:
+                    continue
                 for author in j["authors"]:
                     if author["authorId"] in ids:
                         author_papers[author["authorId"]].append(process_paper_data(j, allow_none_year=True))
@@ -122,24 +129,68 @@ def process_citing_papers(config: dict):
     if os.path.exists(output_path):
         print(f"{output_path} exists - Skipping")
         return
-    with open(os.path.join(data_dir(config), "citing_papers.json")) as f:
-        citing_papers = json.load(f)
-    paper_ids = [id for tmp in citing_papers.values() for id in tmp]
+    citing_papers = json.load(open(os.path.join(data_dir(config), "citing_papers.json")))
+    cited_papers = json.load(open(os.path.join(data_dir(config), "cited_papers.json")))
+    paper_ids = [id for tmp in citing_papers.values() for id in tmp] + [id for tmp in cited_papers.values() for id in tmp]
     papers = load_papers(config, paper_ids, "CorpusId")
     print(f"Saving to {output_path}")
     with open(output_path, 'w') as f:
         json.dump(papers, f, indent=4)
 
 
+def unify_papers(config: dict):
+    print("\nUnifying paper data")
+    
+    output_path = papers_path(config)
+    if os.path.exists(output_path):
+        print(f"{output_path} exists - Skipping")
+        # return
+    
+    papers = json.load(open(os.path.join(data_dir(config), "paper_info.json")))
+    citing_papers = json.load(open(os.path.join(data_dir(config), "citing_papers.json")))
+    cited_papers = json.load(open(os.path.join(data_dir(config), "cited_papers.json")))
+    citing_paper_info = json.load(open(os.path.join(data_dir(config), "citing_paper_info.json")))
+
+    all_papers = {paper_id: paper for paper_id, paper in citing_paper_info.items()}
+    for paper_id, paper in papers.items():
+        all_papers[paper_id] = paper
+
+    for paper_id, paper in all_papers.items():
+        if "arxiv_id" not in paper:
+            continue
+        paper["citing_papers"] = list(set(citing_papers[paper_id])) if paper_id in citing_papers else []
+        paper["cited_papers"] = list(set(cited_papers[paper_id])) if paper_id in cited_papers else []
+
+    # Calculate some statistics
+    cntrs = {
+        "papers": 0,
+        "arxiv papers": 0,
+        "non-arxiv papers": 0,
+        **{f"papers with {key}" : 0 for key in ["cited_papers", "citing_papers"]}
+    }
+    for paper in all_papers.values():
+        cntrs["papers"] += 1
+        cntrs["arxiv papers"] += "arxiv_id" in paper
+        cntrs["non-arxiv papers"] += "arxiv_id" not in paper
+        if "arxiv_id" in paper:
+            for key in ["cited_papers", "citing_papers"]:
+                cntrs[f"papers with {key}"] += len(paper[key]) > 0
+    print(json.dumps(cntrs, indent=4))
+
+    print(f"Saving to {output_path}")
+    with open(output_path, 'w') as f:
+        json.dump(all_papers, f, indent=4)
+
+
+
 def process_authors(config: dict):
     print("\nLoading citing authors info from Semantic Scholar")
-    output_path = os.path.join(data_dir(config), "author_info.json")
+    output_path = authors_path(config)
     if os.path.exists(output_path):
         print(f"{output_path} exists - Skipping")
         return
-    with open(os.path.join(data_dir(config), "citing_paper_info.json")) as f:
-        citing_papers_info = json.load(f)
-    author_ids = list(set([author_id for citing_paper in citing_papers_info.values() for author_id in citing_paper["authors"]]))
+    papers = json.load(open(papers_path(config)))
+    author_ids = list(set([author_id for paper in papers.values() for author_id in paper["authors"]]))
     authors = load_author_papers(config, author_ids)
     print(f"Saving to {output_path}")
     with open(output_path, 'w') as f:
@@ -180,6 +231,35 @@ Additionally, takes a random sample of config["data"]["num_papers"] papers
     print(kaggle_data)
 
 
+def get_citing_authors(
+    citing_papers: list,
+    papers: dict,
+    paper_year: int,
+    citation_years: int
+):
+    """
+Get the set of all authors who cited the paper in the `citation_years` years that follow the paper's publication
+
+Arguments:
+    l: list of citations as received from Semantic Scholar
+    paper_year: the year of the paper being cited
+    citation_years: hom many years after the paper publication to consider as citations
+"""
+    authors = set()
+    for citing_paper_id in citing_papers:
+        citing_paper_id = str(citing_paper_id)
+        try:
+            citing_paper = papers[citing_paper_id]
+            year = int(citing_paper["year"])
+            if year < paper_year + citation_years:
+                for author in citing_paper["authors"]:
+                    authors.add(int(author))
+        except (TypeError, KeyError):
+            # no data for citing_paper_id or year is null
+            continue
+    return list(authors)
+
+
 def generate_samples(config: dict):
     """
 Generate three lists of samples that will be used for training, validation and evaluation. Each sample is a triplet: `<paper_id, author_id, label>`. The
@@ -194,12 +274,8 @@ a random set of papers. See config["data"]["test_is_2020"]
 """
     print("\nGenerating train, validation and test folds")
     rng = np.random.default_rng(seed=42)
-    with open(os.path.join(data_dir(config), "paper_info.json")) as f:
-        papers = json.load(f)
-    with open(os.path.join(data_dir(config), "author_info.json")) as f:
-        authors = json.load(f)
-    with open(os.path.join(data_dir(config), "citing_paper_info.json")) as f:
-        citing_paper_info = json.load(f)
+    papers = json.load(open(papers_path(config)))
+    authors = json.load(open(authors_path(config)))
     max_author_papers = config["data"]["max_author_papers"]
     valid_authors = [int(key) for key, value in authors.items() if value is not None and len(value) < max_author_papers]
     print(f"Removed {len(authors) - len(valid_authors)} authors with more than {max_author_papers} papers")
@@ -209,14 +285,15 @@ a random set of papers. See config["data"]["test_is_2020"]
     num_invalid_citing_authors = 0
     num_null_papers = 0
     samples = []
-    for paper_id, paper in papers.items(): # Go over all papers
-        if paper is None or str(paper_id) not in citing_paper_info:
-            num_null_papers += 1
-            print(paper_id)
+
+    # Positive samples - all authors who cited the paper
+    for paper_id, paper in papers.items():
+        if "arxiv_id" not in paper:
             continue
-        # Positive samples - all authors who cited the paper
-        for citing_author in paper["citing_authors"]:
-            if citing_author not in valid_authors:
+        citing_authors = get_citing_authors(paper["citing_papers"], papers, paper["year"], config["data"]["cication_years"])
+        for citing_author in citing_authors:
+            citing_author = str(citing_author)
+            if citing_author not in authors:
                 num_invalid_citing_authors += 1
                 continue
             samples.append(
@@ -227,22 +304,25 @@ a random set of papers. See config["data"]["test_is_2020"]
                     "label": True
                 }
             )
-        # Negative samples - a random author who did not cite the paper
-        for author_idx in rng.integers(low=0, high=len(valid_authors), size=config["data"]["num_negative"]):
-            if valid_authors[author_idx] in paper["citing_authors"]:
-                # Actually a positive sample
-                continue
+
+    # Negative samples - a random citing author
+    # There's a very small chance that this author did cite the paper but what can you do...
+    citing_authors = list(set([s["author"] for s in samples]))
+    cited_papers = list(set([s["paper"] for s in samples]))
+    for paper_id in cited_papers:
+        paper = papers[paper_id]
+        for author_idx in rng.integers(low=0, high=len(citing_authors), size=config["data"]["num_negative"]):
             samples.append(
                 {
                     "paper": paper_id,
                     "year": paper["year"],
-                    "author": valid_authors[author_idx],
+                    "author": citing_authors[author_idx],
                     "label": False
                 }
             )
+
     samples = pd.DataFrame.from_records(samples)
     print(samples)
-    return
     
     # Split the list of samples to train, validation and test folds
     if config["data"]["test_is_2020"]:

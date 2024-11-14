@@ -16,34 +16,6 @@ QUERY_FAIL_MULT_DELAY = 2
 QUERY_DUMP_INTERVAL = 10
 
 
-
-
-def get_citing_authors(
-    l: list,
-    paper_year: int,
-    citation_years: int
-):
-    """
-Get the set of all authors who cited the paper in the `citation_years` years that follow the paper's publication
-
-Arguments:
-    l: list of citations as received from Semantic Scholar
-    paper_year: the year of the paper being cited
-    citation_years: hom many years after the paper publication to consider as citations
-"""
-    authors = set()
-    for citation in l:
-        try:
-            year = int(citation["year"])
-            if year < paper_year + citation_years:
-                for author in citation["authors"]:
-                    authors.add(int(author["authorId"]))
-        except TypeError:
-            # year is null
-            continue
-    return list(authors)
-
-
 def batch_query(
     json_save_path,
     query_ids,

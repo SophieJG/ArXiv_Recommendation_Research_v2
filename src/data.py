@@ -12,16 +12,13 @@ Main class used to store data for training and evaluation purpose. See the readm
 """
     def __init__(self, config: dict) -> None:
         print("Loading Arxiv Kaggle data")
-        with open(kaggle_data_path(config)) as f:
-            self.kaggle_data = pd.read_parquet(kaggle_data_path(config))
+        self.kaggle_data = pd.read_parquet(kaggle_data_path(config))
         self.kaggle_data["index"] = [f"ARXIV:{id}" for id in self.kaggle_data["id"]]
         self.kaggle_data = self.kaggle_data.set_index("index", drop=True)
         print("Loading papers data")
-        with open(papers_path(config)) as f:
-            self.papers = json.load(f)
+        self.papers = json.load(open(papers_path(config)))
         print("Loading authors data")
-        with open(authors_path(config)) as f:
-            self.authors = json.load(f)
+        self.authors = json.load(open(authors_path(config)))
         print("loading folds")
         self.train = pd.read_csv(os.path.join(data_dir(config), "train.csv"))
         self.validation = pd.read_csv(os.path.join(data_dir(config), "validation.csv"))
@@ -70,7 +67,7 @@ that implies removing all publications by the author that proceed (are after) th
                     "id": author_id,
                     # Filter the author's published papers by year
                     "papers": [
-                        p for p in self.authors[author_id]["papers"] if p["year"] < paper_year  # Take only papers that precede the recommended paper publication year
+                        p for p in self.authors[author_id] if p["year"] < paper_year  # Take only papers that precede the recommended paper publication year
                     ]
                 },
                 "label": row["label"]
