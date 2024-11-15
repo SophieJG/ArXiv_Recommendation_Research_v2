@@ -395,5 +395,5 @@ interacted with at least one paper in the test fold
             )
     samples = pd.DataFrame.from_records(samples)
     print(f"#ranking samples: {len(samples)}")
-    print(f"ranking pos ratio: {samples["label"].mean()}")
+    print(f"ranking pos ratio: {samples['label'].mean()}")
     samples.to_csv(os.path.join(data_dir(config), f"ranking.csv"), index=False)
