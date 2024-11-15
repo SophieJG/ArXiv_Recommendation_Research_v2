@@ -3,9 +3,9 @@ data:
   process_papers: True  # Prerequisite: data/kaggle_json_to_parquet
   process_citations: True  # Prerequisite: data/process_papers
   process_citing_papers: True  # Prerequisite: data/process_citations
-  unify_papers: False  # Prerequisite: data/process_citing_papers
-  process_authors: False  # Prerequisite: data/process_citing_papers
-  generate_samples: False  # Prerequisite: data/process_authors & data/unify_papers
+  unify_papers: True  # Prerequisite: data/process_citing_papers
+  process_authors: True  # Prerequisite: data/process_citing_papers
+  generate_samples: True  # Prerequisite: data/process_authors & data/unify_papers
 data_queries:
   kaggle_json_to_parquet: False  # Prerequisite: None
   query_papers: False  # Prerequisite: data_queries/kaggle_json_to_parquet

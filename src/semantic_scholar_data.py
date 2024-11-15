@@ -13,85 +13,79 @@ import copy
 from util import authors_path, data_dir, kaggle_data_path, papers_path
 
 
-def parse_s2fieldsofstudy(fieldsofstudy_list: list):
+def multi_file_query(
+    files_path: str,
+    processing_func: callable,
+    n_jobs: int,
+    *args,
+    **kwargs
+):
+    files = glob.glob(files_path)
+    res = Parallel(n_jobs=n_jobs)(delayed(processing_func)(f, *args, **kwargs) for f in tqdm(files, f"n_jobs={n_jobs}"))
+
+    # Result of processing_func is either a single dict or a list of dicts
+    # In any case, these needs to be merged
+    if isinstance(res[0], dict):
+        # Each element of res is a single dict
+        d_all = {}
+        for d in res:
+            d_all.update(d)
+        return d_all
+
+    # Each element of res is a list of dicts
+    num_dicts = len(res[0])
+    dicts = [{} for _ in range(num_dicts)]
+    for d in res:
+        for idx in range(num_dicts):
+            dicts[idx].update(d[idx])
+    if num_dicts == 1:
+        return dicts[0]
+    return dicts
+
+
+def parse_s2fieldsofstudy_(fieldsofstudy_list: list):
     if fieldsofstudy_list is None:
         return []
     return list(set([fieldsofstudy["category"] for fieldsofstudy in fieldsofstudy_list if fieldsofstudy["category"] is not None]))
 
 
-def process_paper_data(j: dict, allow_none_year: bool):
+def process_paper_data_(j: dict, allow_none_year: bool):
     # Process Semantic Scholar data for a paper
     if not allow_none_year and j["year"] is None:
         return None
     return {
         "authors": list(set([int(tmp["authorId"]) for tmp in j["authors"] if tmp["authorId"] is not None])),
-        "s2fieldsofstudy": parse_s2fieldsofstudy(j["s2fieldsofstudy"]),
+        "s2fieldsofstudy": parse_s2fieldsofstudy_(j["s2fieldsofstudy"]),
         **{k: j[k] for k in ["title", "year", "referencecount", "publicationdate"]}
     }
 
 
-def process_file(path: str, ids: list, id_type: str):
-    ids = [str(id) for id in ids]
-    id_type = copy.deepcopy(id_type)
-    assert id_type in ["CorpusId", "ArXiv"]
-    papers = {}
-    with gzip.open(path, "rt", encoding="UTF-8") as fin:
-        for l in fin:
-            j = json.loads(l)
-            if j["externalids"][id_type] not in ids:
-                continue
-            processed_paper = process_paper_data(j, allow_none_year=False)
-            if processed_paper is None:
-                continue
-            if id_type == "ArXiv":
-                processed_paper["arxiv_id"] = j["externalids"]["ArXiv"]
-            papers[j["corpusid"]] = processed_paper
-    return papers
-
-
-def load_papers(config: dict, ids: list, id_type: str):
-    files = glob.glob(os.path.join(config["data"]["semantic_scholar_path"], "papers", "*.gz"))
-    paper_lists = Parallel(n_jobs=config["data"]["n_jobs"], verbose=50)(delayed(process_file)(f, ids, id_type) for f in files)
-    papers = {}
-    for pl in paper_lists:
-        papers.update(pl)
-    return papers
-
-
-def load_citations(config: dict, ids: list):
-    ids = [int(id) for id in ids]
-    files = glob.glob(os.path.join(config["data"]["semantic_scholar_path"], "citations", "*.gz"))
-    citing_papers = defaultdict(lambda: [])
-    cited_papers = defaultdict(lambda: [])
-    for idx, f in enumerate(files[:2]):
-        with gzip.open(f, "rt", encoding="UTF-8") as fin:
-            for l in tqdm(fin, f"Processing file {idx} / {len(files)}"):
+def load_papers(config, ids: list, id_type: str):
+    def process_papers_(path: str, ids: list, id_type: str):
+        ids = set([str(id) for id in ids])
+        id_type = copy.deepcopy(id_type)
+        assert id_type in ["CorpusId", "ArXiv"]
+        papers = {}
+        with gzip.open(path, "rt", encoding="UTF-8") as fin:
+            for l in fin:
                 j = json.loads(l)
-                if j["citingcorpusid"] is None or j["citedcorpusid"] is None:
+                if j["externalids"][id_type] not in ids:
                     continue
-                if j["citingcorpusid"] in ids:
-                    cited_papers[j["citingcorpusid"]].append(j["citedcorpusid"])
-                if j["citedcorpusid"] in ids:
-                    citing_papers[j["citedcorpusid"]].append(j["citingcorpusid"])
-        print(f"#citing_papers = {len(citing_papers)}, #cited_papers = {len(cited_papers)}")
-    return citing_papers, cited_papers
-
-
-def load_author_papers(config: dict, ids: list):
-    ids = [str(id) for id in ids]
-    files = glob.glob(os.path.join(config["data"]["semantic_scholar_path"], "papers", "*.gz"))
-    author_papers = defaultdict(lambda: [])
-    for idx, f in enumerate(files[:2]):
-        with gzip.open(f, "rt", encoding="UTF-8") as fin:
-            for l in tqdm(fin, f"Processing file {idx} / {len(files)}"):
-                j = json.loads(l)
-                if j["authors"] is None:
+                processed_paper = process_paper_data_(j, allow_none_year=False)
+                if processed_paper is None:
                     continue
-                for author in j["authors"]:
-                    if author["authorId"] in ids:
-                        author_papers[author["authorId"]].append(process_paper_data(j, allow_none_year=True))
-        print(f"#author_papers = {len(author_papers)} / {len(ids)}")
-    return author_papers
+                if id_type == "ArXiv":
+                    processed_paper["arxiv_id"] = j["externalids"]["ArXiv"]
+                papers[j["corpusid"]] = processed_paper
+        return papers
+
+    return multi_file_query(
+        os.path.join(config["data"]["semantic_scholar_path"], "papers", "*.gz"),
+        process_papers_,
+        config["data"]["n_jobs"],
+        ids=ids,
+        id_type=id_type
+    )
 
 
 def process_papers(config: dict):
@@ -102,6 +96,7 @@ def process_papers(config: dict):
         return
     kaggle_data = pd.read_parquet(kaggle_data_path(config))
     papers = load_papers(config, kaggle_data["id"], "ArXiv")
+
     print(f"Saving to {output_path}")
     with open(output_path, 'w') as f:
         json.dump(papers, f, indent=4)
@@ -116,8 +111,31 @@ def process_citations(config: dict):
         return
     with open(os.path.join(data_dir(config), "paper_info.json")) as f:
         paper_info = json.load(f)
-    citing_papers, cited_papers = load_citations(config, list(paper_info.keys()))
-    for path, data in zip([citing_papers_path, cited_papers_path], [citing_papers, cited_papers]):
+
+    def process_citations_(path: str, ids: list):
+        ids = set([int(id) for id in ids])
+        citing_papers = defaultdict(lambda: [])
+        cited_papers = defaultdict(lambda: [])
+        with gzip.open(path, "rt", encoding="UTF-8") as fin:
+            for l in fin:
+                j = json.loads(l)
+                if j["citingcorpusid"] is None or j["citedcorpusid"] is None:
+                    continue
+                if j["citingcorpusid"] in ids:
+                    cited_papers[j["citingcorpusid"]].append(j["citedcorpusid"])
+                if j["citedcorpusid"] in ids:
+                    citing_papers[j["citedcorpusid"]].append(j["citingcorpusid"])
+        # print(f"#citing_papers = {len(citing_papers)}, #cited_papers = {len(cited_papers)}")
+        return citing_papers, cited_papers
+    
+    res = multi_file_query(
+        os.path.join(config["data"]["semantic_scholar_path"], "citations", "*.gz"),
+        process_citations_,
+        config["data"]["n_jobs"],
+        ids=[int(id) for id in paper_info.keys()]
+    )
+    
+    for path, data in zip([citing_papers_path, cited_papers_path], res):
         print(f"Saving to {path}")
         with open(path, 'w') as f:
             json.dump(data, f, indent=4)
@@ -190,8 +208,28 @@ def process_authors(config: dict):
         print(f"{output_path} exists - Skipping")
         return
     papers = json.load(open(papers_path(config)))
-    author_ids = list(set([author_id for paper in papers.values() for author_id in paper["authors"]]))
-    authors = load_author_papers(config, author_ids)
+    ids = set([str(author_id) for paper in papers.values() for author_id in paper["authors"]])
+
+    def process_authors_(f: str, ids: list):
+        ids = set([id for id in ids])
+        author_papers = defaultdict(lambda: [])
+        with gzip.open(f, "rt", encoding="UTF-8") as fin:
+            for l in fin:
+                j = json.loads(l)
+                if j["authors"] is None:
+                    continue
+                for author in j["authors"]:
+                    if author["authorId"] in ids:
+                        author_papers[author["authorId"]].append(process_paper_data_(j, allow_none_year=True))
+        return author_papers
+    
+    authors = multi_file_query(
+        os.path.join(config["data"]["semantic_scholar_path"], "papers", "*.gz"),
+        process_authors_,
+        config["data"]["n_jobs"],
+        ids=ids
+    )
+
     print(f"Saving to {output_path}")
     with open(output_path, 'w') as f:
         json.dump(authors, f, indent=4)
