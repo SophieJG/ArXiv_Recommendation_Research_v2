@@ -2,8 +2,13 @@ import os
 
 import numpy as np
 
+
 def data_dir(config: dict):
     return os.path.join(config["data"]["base_path"], "data")
+
+
+def tmp_data_dir(config: dict):
+    return os.path.join(config["data"]["base_path"], "data", "tmp")
 
 
 def models_dir(config: dict):

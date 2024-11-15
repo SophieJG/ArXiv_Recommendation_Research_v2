@@ -42,10 +42,10 @@ def runner(config: dict):
         process_citations(config)
     if config["runner"]["data"]["process_citing_papers"]:
         process_citing_papers(config)
-    if config["runner"]["data"]["unify_papers"]:
-        unify_papers(config)
     if config["runner"]["data"]["process_authors"]:
         process_authors(config)
+    if config["runner"]["data"]["unify_papers"]:
+        unify_papers(config)
     if config["runner"]["data"]["generate_samples"]:
         generate_samples(config)
         
