@@ -1,5 +1,5 @@
 data:
-  kaggle_json_to_parquet: False  # Prerequisite: None
+  kaggle_json_to_parquet: True  # Prerequisite: None
   process_papers: True  # Prerequisite: data/kaggle_json_to_parquet
   process_citations: True  # Prerequisite: data/process_papers
   process_citing_papers: True  # Prerequisite: data/process_citations

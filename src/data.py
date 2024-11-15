@@ -11,15 +11,15 @@ class Data:
 Main class used to store data for training and evaluation purpose. See the readme for more details.
 """
     def __init__(self, config: dict) -> None:
-        print("Loading Arxiv Kaggle data")
+        print("Data: loading Arxiv Kaggle data")
         self.kaggle_data = pd.read_parquet(kaggle_data_path(config))
         self.kaggle_data["index"] = [f"ARXIV:{id}" for id in self.kaggle_data["id"]]
         self.kaggle_data = self.kaggle_data.set_index("index", drop=True)
-        print("Loading papers data")
+        print("Data: loading papers data")
         self.papers = json.load(open(papers_path(config)))
-        print("Loading authors data")
+        print("Data: loading authors data")
         self.authors = json.load(open(authors_path(config)))
-        print("loading folds")
+        print("Data: loading folds")
         self.train = pd.read_csv(os.path.join(data_dir(config), "train.csv"))
         self.validation = pd.read_csv(os.path.join(data_dir(config), "validation.csv"))
         self.test = pd.read_csv(os.path.join(data_dir(config), "test.csv"))

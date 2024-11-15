@@ -131,11 +131,56 @@ def process_citing_papers(config: dict):
     if os.path.exists(output_path):
         print(f"{output_path} exists - Skipping")
         return
+    arxiv_papers = json.load(open(os.path.join(tmp_data_dir(config), "paper_info.json")))
     citing_papers = json.load(open(os.path.join(tmp_data_dir(config), "citing_papers.json")))
-    paper_ids = []
-    for citing_papers_ in citing_papers.values():
-        paper_ids += citing_papers_
-    papers = load_papers(config, paper_ids, "CorpusId")
+    papers = {}
+    for paper_id, citing_ps in citing_papers.items():
+        papers[paper_id] = {
+            "year": arxiv_papers[paper_id]["year"],
+            "citing_papers": citing_ps
+        }
+
+    def process_citing_papers_(path: str, papers: dict, citation_years: int):
+        paper_ids = {}
+        for paper in papers.values():
+            arxiv_year = int(paper["year"])
+            for id in paper["citing_papers"]:
+                if id not in paper_ids:
+                    paper_ids[id] = []
+                paper_ids[id].append(arxiv_year)
+
+        papers = {}
+        with gzip.open(path, "rt", encoding="UTF-8") as fin:
+            for l in fin:
+                j = json.loads(l)
+                if j["corpusid"] not in paper_ids or j["year"] is None:
+                    continue
+                citing_paper_year = int(j["year"])
+                is_citing = False
+                for arxiv_paper_year in paper_ids[j["corpusid"]]:
+                    if citing_paper_year < arxiv_paper_year + citation_years:
+                        is_citing = True
+                        break
+                if not is_citing:
+                    continue
+                processed_paper = process_paper_data_(j, allow_none_year=False)
+                if processed_paper is None:
+                    continue
+                papers[j["corpusid"]] = processed_paper
+        return papers
+
+    dict_list = multi_file_query(
+        os.path.join(config["data"]["semantic_scholar_path"], "papers", "*.gz"),
+        process_citing_papers_,
+        config["data"]["n_jobs"],
+        papers=papers,
+        citation_years=config["data"]["citation_years"]
+    )
+
+    papers = {}
+    for d in tqdm(dict_list, "merging files"):
+        papers.update(d)
+
     print(f"Saving to {output_path}")
     with open(output_path, 'w') as f:
         json.dump(papers, f, indent=4)
@@ -149,17 +194,21 @@ def unify_papers(config: dict):
         print(f"{output_path} exists - Skipping")
         return
     
-    papers = json.load(open(os.path.join(tmp_data_dir(config), "paper_info.json")))
+    print("loading arxiv_papers")
+    arxiv_papers = json.load(open(os.path.join(tmp_data_dir(config), "paper_info.json")))
+    print("loading citing_papers")
     citing_papers = json.load(open(os.path.join(tmp_data_dir(config), "citing_papers.json")))
+    print("loading citing_paper_info")
     citing_paper_info = json.load(open(os.path.join(tmp_data_dir(config), "citing_paper_info.json")))
+    print("loading author_papers")
     author_papers = json.load(open(os.path.join(tmp_data_dir(config), "author_papers.json")))
 
     all_papers = {}
     print("merging citing_paper_info")
     all_papers.update(citing_paper_info)
-    print("merging citing_paper_info")
+    print("merging author_papers")
     all_papers.update(author_papers)
-    for paper_id, paper in tqdm(papers.items(), "merging arxiv papers"):
+    for paper_id, paper in tqdm(arxiv_papers.items(), "merging arxiv papers"):
         all_papers[paper_id] = paper
 
     for paper_id, paper in tqdm(all_papers.items(), "adding citation data"):
@@ -195,16 +244,13 @@ def process_authors(config: dict):
     if os.path.exists(authors_output_path):
         print(f"{authors_output_path} exists - Skipping")
         return
-    arxiv_papers = json.load(open(os.path.join(tmp_data_dir(config), "paper_info.json")))
-    arxiv_paper_ids = [paper_id for paper_id in arxiv_papers.keys()]
     citing_papers = json.load(open(os.path.join(tmp_data_dir(config), "citing_paper_info.json")))
     author_ids = []
     for citing_paper in citing_papers.values():
         author_ids += citing_paper["authors"]
 
-    def process_authors_(f: str, author_ids: list, arxiv_paper_ids: list):
+    def process_authors_(f: str, author_ids: list):
         author_ids = set([int(id) for id in author_ids])
-        arxiv_paper_ids = set([str(id) for id in arxiv_paper_ids])
         author_papers = []
         papers = {}
         with gzip.open(f, "rt", encoding="UTF-8") as fin:
@@ -228,8 +274,7 @@ def process_authors(config: dict):
         os.path.join(config["data"]["semantic_scholar_path"], "papers", "*.gz"),
         process_authors_,
         config["data"]["n_jobs"],
-        author_ids,
-        arxiv_paper_ids
+        author_ids
     )
 
     author_papers = defaultdict(lambda: [])
@@ -239,7 +284,19 @@ def process_authors(config: dict):
             author_papers[author_id].append(corpus_id)
         papers.update(papers_)
 
-    for path, data in zip([authors_output_path, author_papers_path], [author_papers, papers]):
+    valid_authors = {}
+    valid_paper_ids = set()
+    for author, ps in author_papers.items():
+        ps = set(ps)
+        if len(ps) < config["data"]["max_author_papers"]:
+            valid_authors[author] = list(ps)
+            valid_paper_ids.add(ps)
+    print(f"valid authors: {len(valid_authors)} / {len(author_papers)}")
+    print(f"valid papers: {len(valid_paper_ids)} / {len(papers)}")
+
+    valid_papers = {id: papers[id] for id in valid_paper_ids}
+
+    for path, data in zip([authors_output_path, author_papers_path], [valid_authors, valid_papers]):
         print(f"Saving to {path}")
         with open(path, 'w') as f:
             json.dump(data, f, indent=4)
@@ -323,7 +380,9 @@ a random set of papers. See config["data"]["test_is_2020"]
 """
     print("\nGenerating train, validation and test folds")
     rng = np.random.default_rng(seed=42)
+    print("Loading papers")
     papers = json.load(open(papers_path(config)))
+    print("Loading authors")
     authors = json.load(open(authors_path(config)))
     max_author_papers = config["data"]["max_author_papers"]
     valid_authors = set([int(key) for key, value in authors.items() if value is not None and len(value) < max_author_papers])
@@ -339,7 +398,7 @@ a random set of papers. See config["data"]["test_is_2020"]
     for paper_id, paper in tqdm(papers.items(), "Generating positive samples"):
         if "arxiv_id" not in paper:
             continue
-        citing_authors = get_citing_authors(paper["citing_papers"], papers, paper["year"], config["data"]["cication_years"])
+        citing_authors = get_citing_authors(paper["citing_papers"], papers, paper["year"], config["data"]["citation_years"])
         for citing_author in citing_authors:
             citing_author = int(citing_author)
             if citing_author not in valid_authors:
