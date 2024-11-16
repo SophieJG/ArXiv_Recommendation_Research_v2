@@ -1,11 +1,11 @@
 data:
-  kaggle_json_to_parquet: True  # Prerequisite: None
-  process_papers: True  # Prerequisite: data/kaggle_json_to_parquet
-  process_citations: True  # Prerequisite: data/process_papers
-  process_citing_papers: True  # Prerequisite: data/process_citations
-  process_authors: True  # Prerequisite: data/process_citing_papers
-  unify_papers: True  # Prerequisite: data/process_authors
-  generate_samples: True  # Prerequisite: data/unify_papers
+  kaggle_json_to_parquet: False  # Prerequisite: None
+  process_papers: False  # Prerequisite: data/kaggle_json_to_parquet
+  process_citations: False  # Prerequisite: data/process_papers
+  process_citing_papers: False  # Prerequisite: data/process_citations
+  process_authors: False  # Prerequisite: data/process_citing_papers
+  unify_papers: False  # Prerequisite: data/process_authors
+  generate_samples: False  # Prerequisite: data/unify_papers
 data_queries:
   kaggle_json_to_parquet: False  # Prerequisite: None
   query_papers: False  # Prerequisite: data_queries/kaggle_json_to_parquet
@@ -14,8 +14,8 @@ data_queries:
 paper_embedding:
   fit: False  # Prerequisite: data_queries
 model:
-  train: False  # Prerequisite: data_queries
-  eval: False  # Prerequisite: model/train
+  train: True  # Prerequisite: data_queries
+  eval: True  # Prerequisite: model/train
 ranking:
   generate_samples: False  # Prerequisite: data_queries
   generate_predictions: False  # Prerequisite: ranking/generate_samples & model/train

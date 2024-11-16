@@ -29,20 +29,19 @@ dictionaries to rows in a dataframe
         new_samples = []
         for sample in tqdm(samples, "Converting samples to dataframe"):
             # Copy fields from the data dictionaries 
-            new_sample = {key: sample[key] for key in ["title", "referenceCount", "categories", "label"]}
+            new_sample = {key: sample[key] for key in ["title", "categories", "label"]}
             new_sample["author_num_papers"] = len(sample["author"]["papers"])
-            # Go over the author papers and collect the fiefieldsOfStudy and s2FieldsOfStudy into two lists
+            # Go over the author papers and collect the fiefieldsOfStudy and s2fieldsofstudy into two lists
             # Additionally, the papers' titles are concatenated into a long string
             new_sample["author_fieldsOfStudy"] = []
-            new_sample["author_s2FieldsOfStudy"] = []
+            new_sample["author_s2fieldsofstudy"] = []
             new_sample["author_title"] = ""
             for p in sample["author"]["papers"]:
-                for key in ["fieldsOfStudy", "s2FieldsOfStudy"]:
+                for key in ["s2fieldsofstudy"]:
                     if p[key] is not None:
                         new_sample[f"author_{key}"] += p[key]
                 if p["title"] is not None:
                     new_sample["author_title"] += " " + p["title"]
-            new_sample["is_cited"] = int(sample["author"]["id"]) in sample["cited_authors"]  # Does the paper cites the author
             new_samples.append(new_sample)
         df = pd.DataFrame.from_records(new_samples)
         X = df[[col for col in df.columns if col != "label"]]
@@ -60,11 +59,10 @@ dictionaries to rows in a dataframe
 """
         X_train, y_train = self.load_fold(data, "train")
         self.feature_processing_pipeline = ColumnTransformer([
-            ('passthrough', 'passthrough', ["referenceCount", "author_num_papers", "is_cited"]),
+            ('passthrough', 'passthrough', ["author_num_papers"]),
             ("paper_categories", CountVectorizer(analyzer=passthrough_func), "categories"),
             ("title", CountVectorizer(), "title"),
-            ("author_fieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_fieldsOfStudy"),
-            ("author_s2FieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_s2FieldsOfStudy"),
+            ("author_s2fieldsofstudy", CountVectorizer(analyzer=passthrough_func), "author_s2fieldsofstudy"),
         ])
         X_train = self.feature_processing_pipeline.fit_transform(X_train)
         print("Training data size:", X_train.shape, " type:", type(X_train))

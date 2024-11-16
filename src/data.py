@@ -13,7 +13,7 @@ Main class used to store data for training and evaluation purpose. See the readm
     def __init__(self, config: dict) -> None:
         print("Data: loading Arxiv Kaggle data")
         self.kaggle_data = pd.read_parquet(kaggle_data_path(config))
-        self.kaggle_data["index"] = [f"ARXIV:{id}" for id in self.kaggle_data["id"]]
+        self.kaggle_data["index"] = [str(id) for id in self.kaggle_data["id"]]
         self.kaggle_data = self.kaggle_data.set_index("index", drop=True)
         print("Data: loading papers data")
         self.papers = json.load(open(papers_path(config)))
@@ -53,10 +53,18 @@ that implies removing all publications by the author that proceed (are after) th
         fold = self.parse_fold(fold)
         samples = []
         for _, row in tqdm(fold.iterrows(), total=len(fold), desc="Generating samples"):
-            paper_id = row["paper"]
+            paper_id = str(row["paper"])
             author_id = str(row["author"])
-            kaggle_paper_data = self.kaggle_data.loc[paper_id]
+            kaggle_paper_data = self.kaggle_data.loc[str(self.papers[paper_id]["arxiv_id"])]
             paper_year = kaggle_paper_data["year_updated"]
+            author_papers = []
+            for id in self.authors[author_id]:
+                # Filter the author's published papers by year
+                if str(id) not in self.papers:
+                    continue
+                paper = self.papers[str(id)]
+                if paper["year"] < paper_year:
+                    author_papers.append(paper)
             samples.append({
                 # copy all fields from Semantic Scholar except `year` and `citing_authors`
                 **{key: value for key, value in self.papers[paper_id].items() if key not in ["year", "citing_authors"]},
@@ -65,10 +73,7 @@ that implies removing all publications by the author that proceed (are after) th
                 "categories": list(kaggle_paper_data["categories"]),
                 "author": {
                     "id": author_id,
-                    # Filter the author's published papers by year
-                    "papers": [
-                        p for p in self.authors[author_id] if p["year"] < paper_year  # Take only papers that precede the recommended paper publication year
-                    ]
+                    "papers": author_papers
                 },
                 "label": row["label"]
             })

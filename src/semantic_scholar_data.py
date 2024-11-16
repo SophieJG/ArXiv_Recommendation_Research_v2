@@ -290,7 +290,7 @@ def process_authors(config: dict):
         ps = set(ps)
         if len(ps) < config["data"]["max_author_papers"]:
             valid_authors[author] = list(ps)
-            valid_paper_ids.add(ps)
+            valid_paper_ids.union(ps)
     print(f"valid authors: {len(valid_authors)} / {len(author_papers)}")
     print(f"valid papers: {len(valid_paper_ids)} / {len(papers)}")
 
