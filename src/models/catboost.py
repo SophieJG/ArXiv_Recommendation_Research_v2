@@ -62,7 +62,11 @@ class CatboostModel(BaseModel):
                 score += numerator / denominator
         return score
 
-    def load_fold(self, data: Data, fold: str):
+    def load_fold(
+        self,
+        data: Data,
+        fold: str
+    ):
         """
 Loads a fold and converts it to pandas dataframe. Some non-trivial data processing is required to convert the paper and author
 dictionaries to rows in a dataframe
@@ -195,7 +199,8 @@ dictionaries to rows in a dataframe
         X_val, y_val = self.load_fold(data, "validation")
         samples_val = data.get_fold("validation")
         X_val = self.process_data(X_val, samples_val)
-        self.model = CatBoostClassifier().fit(X_train, y_train, eval_set=[(X_val, y_val)], early_stopping_rounds=10, use_best_model=True
+        self.model = CatBoostClassifier().fit(
+            X_train, y_train, eval_set=[(X_val, y_val)], early_stopping_rounds=10, use_best_model=True
         )
 
         # Retrieve feature names from the pipeline and print
