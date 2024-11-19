@@ -70,7 +70,7 @@ dictionaries to rows in a dataframe
         samples = data.get_fold(fold)
         new_samples = []
         for sample in tqdm(samples, "Converting samples to dataframe"):
-            # Copy fields from the data dictionaries
+            # Copy fields from the data dictionaries 
             new_sample = {key: sample[key] for key in ["title", "referenceCount", "categories", "label"]}
             # Add abstract if use_abstract_vectorizer is enabled
             if self.params.get("use_abstract_vectorizer", False):
@@ -87,7 +87,7 @@ dictionaries to rows in a dataframe
                         new_sample[f"author_{key}"] += p[key]
                 if p["title"] is not None:
                     new_sample["author_title"] += " " + p["title"]
-            new_sample["is_cited"] = int(sample["author"]["id"]) in sample["cited_authors"]
+            new_sample["is_cited"] = int(sample["author"]["id"]) in sample["cited_authors"]  # Does the paper cites the author
             new_samples.append(new_sample)
         df = pd.DataFrame.from_records(new_samples)
         X = df[[col for col in df.columns if col != "label"]]
