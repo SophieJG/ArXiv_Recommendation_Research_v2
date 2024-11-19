@@ -36,7 +36,7 @@ Converts the json downloaded from kaggle to parquet and filters not-relevant pap
                         kaggle_data.append(l)
                         break
         kaggle_data = pd.DataFrame(kaggle_data)
-        print(f"Filtering relevant years (year < {config['data']['end_year']}) & (year >= {config['data']['start_year']})")
+        print(f"Filtering relevant years (year < {config["data"]["end_year"]}) & (year >= {config["data"]["start_year"]})")
         kaggle_data['update_date'] = pd.to_datetime(kaggle_data['update_date'])
         kaggle_data['year_updated'] = kaggle_data['update_date'].dt.year
         kaggle_data = kaggle_data[(kaggle_data["year_updated"] < config["data"]["end_year"]) & (kaggle_data["year_updated"] >= config["data"]["start_year"])]
@@ -395,5 +395,5 @@ interacted with at least one paper in the test fold
             )
     samples = pd.DataFrame.from_records(samples)
     print(f"#ranking samples: {len(samples)}")
-    print(f"ranking pos ratio: {samples['label'].mean()}")
+    print(f"ranking pos ratio: {samples["label"].mean()}")
     samples.to_csv(os.path.join(data_dir(config), f"ranking.csv"), index=False)

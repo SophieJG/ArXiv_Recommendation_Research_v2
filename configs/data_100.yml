@@ -1,14 +1,14 @@
-arxiv_json_path: "/home/loaner/workspace/data/arxiv-metadata-oai-snapshot.json" # Path to the file downloaded from kaggle
+arxiv_json_path: "/home/loaner/workspace/data/arxiv-metadata-oai-snapshot.json"  # Path to the file downloaded from kaggle
 
-base_path: "/tmp/arxiv/papers_100/" # Path to store data and models
-test_is_2020: True # When this flag is set to true the test set is the year 2020, validation is 2019 and the rest is training. Otherwise the splits are random
-start_year: 2011 # papers included in datasets are all papers where year >= `start_year`
-end_year: 2021 # papers included in datasets are all papers where year < `end_year`
-cication_years: 3 # In order to be considered a positive sample, a citation needs to be in the `cication_years` years after the paper publication
-prepare_authors_data_batch_sizes: [100, 25, 5, 1] # See src/data_queries.py:prepare_authors_data
-num_papers: 100 # Number of papers to include in the dataset. Use 0 to include all papers
-num_negative: 50 # Number of negative samples for each paper
-max_author_papers: 500 # Drop authors with more publications than `max_author_papers`. We believe that these result from errors in Semantic Scholar's name disambiguation logic
+base_path: "/tmp/arxiv/papers_100/"  # Path to store data and models
+test_is_2020: True  # When this flag is set to true the test set is the year 2020, validation is 2019 and the rest is training. Otherwise the splits are random
+start_year: 2011  # papers included in datasets are all papers where year >= `start_year`
+end_year: 2021  # papers included in datasets are all papers where year < `end_year`
+cication_years: 3  # In order to be considered a positive sample, a citation needs to be in the `cication_years` years after the paper publication
+prepare_authors_data_batch_sizes: [100, 25, 5, 1]  # See src/data_queries.py:prepare_authors_data
+num_papers: 100  # Number of papers to include in the dataset. Use 0 to include all papers
+num_negative: 50  # Number of negative samples for each paper
+max_author_papers: 500  # Drop authors with more publications than `max_author_papers`. We believe that these result from errors in Semantic Scholar's name disambiguation logic
 
 # Ranking params
-top_k: [1, 5, 10] # Ks to consider for metrics which take top k. Note that the rankers only rank up to the largest k so this has an effect on ranking run time
+top_k: [1, 5, 10]  # Ks to consider for metrics which take top k. Note that the rankers only rank up to the largest k so this has an effect on ranking run time
