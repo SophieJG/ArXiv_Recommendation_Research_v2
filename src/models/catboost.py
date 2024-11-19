@@ -64,17 +64,14 @@ class CatboostModel(BaseModel):
 
     def load_fold(self, data: Data, fold: str):
         """
-        Loads a fold and converts it to pandas dataframe. Some non-trivial data processing is required to convert the paper and author
-        dictionaries to rows in a dataframe
-        """
+Loads a fold and converts it to pandas dataframe. Some non-trivial data processing is required to convert the paper and author
+dictionaries to rows in a dataframe
+"""
         samples = data.get_fold(fold)
         new_samples = []
         for sample in tqdm(samples, "Converting samples to dataframe"):
             # Copy fields from the data dictionaries
-            new_sample = {
-                key: sample[key]
-                for key in ["title", "referenceCount", "categories", "label"]
-            }
+            new_sample = {key: sample[key] for key in ["title", "referenceCount", "categories", "label"]}
             # Add abstract if use_abstract_vectorizer is enabled
             if self.params.get("use_abstract_vectorizer", False):
                 new_sample["abstract"] = sample.get("abstract") or ""
@@ -90,9 +87,7 @@ class CatboostModel(BaseModel):
                         new_sample[f"author_{key}"] += p[key]
                 if p["title"] is not None:
                     new_sample["author_title"] += " " + p["title"]
-            new_sample["is_cited"] = (
-                int(sample["author"]["id"]) in sample["cited_authors"]
-            )  # Does the paper cites the author
+            new_sample["is_cited"] = int(sample["author"]["id"]) in sample["cited_authors"]
             new_samples.append(new_sample)
         df = pd.DataFrame.from_records(new_samples)
         X = df[[col for col in df.columns if col != "label"]]
@@ -144,12 +139,10 @@ class CatboostModel(BaseModel):
 
     def fit(self, data: Data):
         """
-        1. Build the BM25 corpus and initialize the BM25 model.
-        2. Load and process the training data.
-        3. Fit the preprocessing pipeline on the training data.
-        4. Process validation data.
-        5. Train the model on the processed training data.
-        """
+1. Fit the preprocessing pipeline on the training data
+2. Convert the training and validation data using the preprocessing pipeline
+3. Train the model on the processed training and validation data
+"""
         # Build the BM25 model using the training data
         corpus_documents = []
         for sample in tqdm(data.get_fold("train"), desc="Building BM25 corpus"):
@@ -182,22 +175,10 @@ class CatboostModel(BaseModel):
 
         transformers = [
             ("passthrough", "passthrough", passthrough_features),
-            (
-                "paper_categories",
-                CountVectorizer(analyzer=passthrough_func),
-                "categories",
-            ),
+            ("paper_categories", CountVectorizer(analyzer=passthrough_func), "categories"),
             ("title", CountVectorizer(), "title"),
-            (
-                "author_fieldsOfStudy",
-                CountVectorizer(analyzer=passthrough_func),
-                "author_fieldsOfStudy",
-            ),
-            (
-                "author_s2FieldsOfStudy",
-                CountVectorizer(analyzer=passthrough_func),
-                "author_s2FieldsOfStudy",
-            ),
+            ("author_fieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_fieldsOfStudy"),
+            ("author_s2FieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_s2FieldsOfStudy"),
         ]
 
         # Conditionally add abstract vectorizer if enabled
@@ -211,21 +192,12 @@ class CatboostModel(BaseModel):
         X_val, y_val = self.load_fold(data, "validation")
         samples_val = data.get_fold("validation")
         X_val = self.process_data(X_val, samples_val)
-        self.model = CatBoostClassifier().fit(
-            X_train,
-            y_train,
-            eval_set=[(X_val, y_val)],
-            early_stopping_rounds=10,
-            use_best_model=True,
+        self.model = CatBoostClassifier().fit(X_train, y_train, eval_set=[(X_val, y_val)], early_stopping_rounds=10, use_best_model=True
         )
 
-        # Retrieve feature names from the pipeline
+        # Retrieve feature names from the pipeline and print
         feature_names = self.feature_processing_pipeline.get_feature_names_out()
-
-        # Get feature importances from the trained model
         importances = self.model.get_feature_importance()
-
-        # Print feature importances
         print("\nFeature Importances:")
         for name, importance in zip(feature_names, importances):
             print(f"Feature: {name}, Importance: {importance}")
@@ -240,7 +212,10 @@ class CatboostModel(BaseModel):
         X_processed = self.process_data(X, samples)
         return self.model.predict_proba(X_processed)[:, 1]
 
-    def save_(self, path: str):
+    def save_(
+        self,
+        path: str
+    ):
         assert self.model is not None
         self.model.save_model(os.path.join(path, "model.cbm"), format="cbm")
         with open(os.path.join(path, "pipeline.pkl"), "wb") as f:
@@ -249,7 +224,10 @@ class CatboostModel(BaseModel):
         with open(os.path.join(path, "bm25_model.pkl"), "wb") as f:
             joblib.dump(self.bm25_model, f)
 
-    def load_(self, path: str):
+    def load_(
+        self,
+        path: str
+    ):
         assert self.model is None
         self.model = CatBoostClassifier()
         self.model.load_model(os.path.join(path, "model.cbm"), format="cbm")
