@@ -32,7 +32,8 @@ class BaseModel:
 
     def fit(
         self,
-        data: Data
+        train_samples: list,
+        validation_samples: list
     ):
         raise NotImplementedError("fit for base_model must be overloaded")
 

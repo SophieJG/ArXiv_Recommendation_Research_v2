@@ -379,6 +379,9 @@ The samples are split by paper id i.e. all the samples of a paper will be placed
 a random set of papers. See config["data"]["test_is_2020"]
 """
     print("\nGenerating train, validation and test folds")
+    if os.path.exists(os.path.join(data_dir(config), "train.csv")):
+        print(f"{os.path.join(data_dir(config), "train.csv")} exists - Skipping")
+        return
     rng = np.random.default_rng(seed=42)
     print("Loading papers")
     papers = json.load(open(papers_path(config)))
@@ -451,47 +454,54 @@ a random set of papers. See config["data"]["test_is_2020"]
 
 
 def generate_ranking_sample(config: dict):
-    pass
-#     """
-# Generate the data sample used for ranking. These are all papers in the test fold and all authors who 
-# interacted with at least one paper in the test fold
-# """
-#     print("\nGenerating ranking fold")
-#     test_papers = pd.read_csv(os.path.join(data_dir(config), "test.csv"))["paper"].unique()
-#     print(f"#test papers {len(test_papers)}")
-#     with open(papers_path(config)) as f:
-#         papers = json.load(f)
-#     with open(authors_path(config)) as f:
-#         authors = json.load(f)
-#     valid_authors = [int(key) for key, value in authors.items() if value is not None]
-#     print(f"Valid authors: {len(valid_authors)} / {len(authors)}")
+    """
+Generate the data sample used for ranking. These are all papers in the test fold and all authors who 
+interacted with at least one paper in the test fold
+"""
+    print("\nGenerating ranking fold")
+    output_path = os.path.join(data_dir(config), "ranking.json")
+    if os.path.exists(output_path):
+        print(f"{output_path} exists - Skipping")
+        return
+    test_papers = sorted(pd.read_csv(os.path.join(data_dir(config), "test.csv"))["paper"].unique().tolist())
+    print(f"#test papers {len(test_papers)}")
+    print("loading", papers_path(config))
+    with open(papers_path(config)) as f:
+        papers = json.load(f)
+    print("loading", authors_path(config))
+    with open(authors_path(config)) as f:
+        authors = json.load(f)
+    valid_authors = set([int(key) for key, value in authors.items() if value is not None])
     
-#     test_authors = set()
-#     for paper_id in test_papers:  # Go over all papers
-#         if paper_id not in papers or papers[paper_id] is None:
-#             continue
-#         test_authors.update(set(papers[paper_id]["citing_authors"]))
-#     print(f"Citing authors: {len(test_authors)}")
-#     test_authors = test_authors.intersection(set(valid_authors))
-#     print(f"Valid citing authors: {len(test_authors)}")
+    test_authors = set()
+    positive_pairs = []
+    for paper_id in test_papers:  # Go over all papers
+        paper_id = str(paper_id)
+        if paper_id not in papers or papers[paper_id] is None:
+            continue
+        citing_papers = papers[paper_id]["citing_papers"]
+        for citing_paper in citing_papers:
+            citing_paper = str(citing_paper)
+            if citing_paper not in papers or papers[citing_paper] is None:
+                continue
+            for author in papers[citing_paper]["authors"]:
+                if author not in valid_authors:
+                    continue
+                positive_pairs.append((int(paper_id), int(author)))
+                test_authors.add(author)
+    test_authors = sorted(list(test_authors.intersection(valid_authors)))
 
-#     samples = []
-#     for paper_id in test_papers:  # Go over all papers
-#         if paper_id not in papers or papers[paper_id] is None:
-#             continue
-#         paper = papers[paper_id]
-#         for author in test_authors:
-#             samples.append(
-#                 {
-#                     "paper": paper_id,
-#                     "author": author,
-#                     "label": author in paper["citing_authors"]
-#                 }
-#             )
-#     samples = pd.DataFrame.from_records(samples)
-#     print(f"#ranking samples: {len(samples)}")
-#     print(f"ranking pos ratio: {samples["label"].mean()}")
-#     samples.to_csv(os.path.join(data_dir(config), f"ranking.csv"), index=False)
+    print(f"#ranking papers: {len(test_papers)}")
+    print(f"#ranking authors: {len(test_authors)}")
+    print(f"#positive pairs: {len(positive_pairs)}")
+    ranking_data = {
+        "papers": test_papers,
+        "authors": test_authors,
+        "pairs": positive_pairs
+    }
+    print(f"Saving to {output_path}")
+    with open(output_path, 'w') as f:
+        json.dump(ranking_data, f, indent=4)
 
 
 def split_by_paper(

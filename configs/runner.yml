@@ -1,23 +1,18 @@
 data:
-  kaggle_json_to_parquet: False  # Prerequisite: None
-  process_papers: False  # Prerequisite: data/kaggle_json_to_parquet
-  process_citations: False  # Prerequisite: data/process_papers
-  process_citing_papers: False  # Prerequisite: data/process_citations
-  process_authors: False  # Prerequisite: data/process_citing_papers
-  unify_papers: False  # Prerequisite: data/process_authors
-  generate_samples: False  # Prerequisite: data/unify_papers
-data_queries:
-  kaggle_json_to_parquet: False  # Prerequisite: None
-  query_papers: False  # Prerequisite: data_queries/kaggle_json_to_parquet
-  query_authors: False  # Prerequisite: data_queries/query_papers
-  generate_samples: False  # Prerequisite: data_queries/query_authors
+  kaggle_json_to_parquet: True  # Prerequisite: None
+  process_papers: True  # Prerequisite: data/kaggle_json_to_parquet
+  process_citations: True  # Prerequisite: data/process_papers
+  process_citing_papers: True  # Prerequisite: data/process_citations
+  process_authors: True  # Prerequisite: data/process_citing_papers
+  unify_papers: True  # Prerequisite: data/process_authors
+  generate_samples: True  # Prerequisite: data/unify_papers
 paper_embedding:
-  fit: False  # Prerequisite: data_queries
+  fit: True  # Prerequisite: data_queries
 model:
   train: True  # Prerequisite: data_queries
   eval: True  # Prerequisite: model/train
 ranking:
-  generate_samples: False  # Prerequisite: data_queries
-  generate_predictions: False  # Prerequisite: ranking/generate_samples & model/train
-  generate_paper_embeddings: False  # Prerequisite: ranking/generate_samples & paper_embedding/fit
-  evaluate: False  # Prerequisite: ranking/generate_predictions & ranking/generate_paper_embeddings
+  generate_samples: True  # Prerequisite: data_queries
+  generate_predictions: True  # Prerequisite: ranking/generate_samples & model/train
+  generate_paper_embeddings: True  # Prerequisite: ranking/generate_samples & paper_embedding/fit
+  evaluate: True  # Prerequisite: ranking/generate_predictions & ranking/generate_paper_embeddings

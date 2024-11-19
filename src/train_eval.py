@@ -23,7 +23,9 @@ Train a model and store the trained model to disk
     print("\n*****\nTraining")
     data = Data(config)
     model = get_model(config)
-    model.fit(data)
+    train_samples = data.get_fold("train")
+    validation_samples = data.get_fold("validation")
+    model.fit(train_samples, validation_samples)
     model.save(models_dir(config), config["model"]["model"], config["model"]["version"])
 
 
@@ -47,7 +49,8 @@ Calculate binary classification metrics on the trained model and all data folds
     model.load(models_dir(config), config["model"]["model"], config["model"]["version"])
     metrics = {}
     for fold in ["train", "validation", "test"]:
-        proba = model.predict_proba(data, fold)
-        labels = data.parse_fold(fold)["label"]
+        samples = data.get_fold(fold)
+        proba = model.predict_proba(samples)
+        labels = [s["label"] for s in samples]
         metrics[fold] = calc_metrics(labels, proba)
     print(json.dumps(metrics, indent=4))

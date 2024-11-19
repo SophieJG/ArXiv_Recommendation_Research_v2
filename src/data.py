@@ -23,24 +23,48 @@ Main class used to store data for training and evaluation purpose. See the readm
         self.train = pd.read_csv(os.path.join(data_dir(config), "train.csv"))
         self.validation = pd.read_csv(os.path.join(data_dir(config), "validation.csv"))
         self.test = pd.read_csv(os.path.join(data_dir(config), "test.csv"))
-        ranking_fold_path = os.path.join(data_dir(config), "ranking.csv")
-        self.ranking = pd.read_csv(ranking_fold_path) if os.path.exists(ranking_fold_path) else None
+        ranking_fold_path = os.path.join(data_dir(config), "ranking.json")
+        self.ranking = json.load(open(ranking_fold_path)) if os.path.exists(ranking_fold_path) else None
 
-    def parse_fold(self, fold: str):
+    def process_author_(self, new_sample: dict, author_id: str, paper_year: int):
+        author_papers = []
+        for id in self.authors[author_id]:
+            # Filter the author's published papers by year
+            if str(id) not in self.papers:
+                continue
+            paper = self.papers[str(id)]
+            if paper["year"] < paper_year:
+                author_papers.append(paper)
+        new_sample["author"] = {
+            "id": author_id,
+            "papers": author_papers
+        }
+        return new_sample
+
+    def process_paper_(self, new_sample: dict, paper_id: str):
+        kaggle_paper_data = self.kaggle_data.loc[str(self.papers[paper_id]["arxiv_id"])]
+        # copy all fields from Semantic Scholar except `year` and `citing_authors`
+        for key, value in self.papers[paper_id].items():
+            if key in ["year", "citing_authors"]:
+                continue
+            new_sample[key] = value
+        # title, categories and year are taken from the kaggle dataset
+        new_sample["title"] = kaggle_paper_data["title"]
+        new_sample["categories"] = list(kaggle_paper_data["categories"])
+        new_sample["year"] = kaggle_paper_data["year_updated"]
+        return new_sample
+
+    def parse_fold_(self, fold_str: str):
         """
 Convert the fold string to the fold data
 """
-        if "ranking" in fold:
-            _, idx0, idx1 = fold.split("_")
-            return self.ranking[int(idx0): int(idx1)]
-        assert fold in ["train", "validation", "test"]
         return {
             "train": self.train,
             "validation": self.validation,
             "test": self.test
-        }[fold]
+        }[fold_str]
     
-    def get_fold(self, fold: str):
+    def get_fold(self, fold_str: str):
         """
 This function returns the unstrucuted fold data as a list of samples. Each sample includes:
 (1) paper info as a dictionary
@@ -50,31 +74,27 @@ This function returns the unstrucuted fold data as a list of samples. Each sampl
 - In order to guarantee consistency, the author info is "shifted" in time to the year the paper was published. In practice,
 that implies removing all publications by the author that proceed (are after) the paper.
 """
-        fold = self.parse_fold(fold)
+        fold = self.parse_fold_(fold_str)
         samples = []
-        for _, row in tqdm(fold.iterrows(), total=len(fold), desc="Generating samples"):
-            paper_id = str(row["paper"])
-            author_id = str(row["author"])
-            kaggle_paper_data = self.kaggle_data.loc[str(self.papers[paper_id]["arxiv_id"])]
-            paper_year = kaggle_paper_data["year_updated"]
-            author_papers = []
-            for id in self.authors[author_id]:
-                # Filter the author's published papers by year
-                if str(id) not in self.papers:
-                    continue
-                paper = self.papers[str(id)]
-                if paper["year"] < paper_year:
-                    author_papers.append(paper)
-            samples.append({
-                # copy all fields from Semantic Scholar except `year` and `citing_authors`
-                **{key: value for key, value in self.papers[paper_id].items() if key not in ["year", "citing_authors"]},
-                # title and categories are taken from the kaggle dataset
-                "title": kaggle_paper_data["title"],
-                "categories": list(kaggle_paper_data["categories"]),
-                "author": {
-                    "id": author_id,
-                    "papers": author_papers
-                },
-                "label": row["label"]
-            })
+        for row in tqdm(fold.itertuples(), total=len(fold), desc=f"Data: loading ({fold_str})"):
+            new_sample = {
+                "label": row.label
+            }
+            paper_id = str(row.paper)
+            author_id = str(row.author)
+            self.process_paper_(new_sample, paper_id)
+            self.process_author_(new_sample, author_id, new_sample["year"])
+            samples.append(new_sample)
         return samples
+
+    def get_ranking_papers(self):
+        return [
+            self.process_paper_({}, str(paper_id))
+            for paper_id in tqdm(self.ranking["papers"], "Data: loading papers")
+        ]
+    
+    def get_ranking_authors(self, paper_year: int, start_idx: int, end_idx: int):
+        return [
+            self.process_author_({}, str(author_id), paper_year)
+            for author_id in self.ranking["authors"][start_idx: end_idx]
+        ]

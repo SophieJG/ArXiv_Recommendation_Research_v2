@@ -3,6 +3,7 @@ import os
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 from data import Data
 from rankers.random_ranker import RandomRanker
 from rankers.utility_ranker import UtilityRanker
@@ -26,22 +27,29 @@ Generate utility predictions for all pairs of <paper, author> in the test set. D
 the predictions are calculated in batches of `batch_size` predictions
 """
     print("\nGenerating utility predictions for ranking")
+    output_path = os.path.join(data_dir(config), f"ranking_utility.parquet")
+    if os.path.exists(output_path):
+        print(f"{output_path} exists - Skipping")
+        return
     data = Data(config)
     model = get_model(config)
     model.load(models_dir(config), config["model"]["model"], config["model"]["version"])
+    papers = data.get_ranking_papers()
+    for p in papers:
+        assert p["year"] == papers[0]["year"], "Ranking is only supported for the case where all papers are from the same year"
+    num_authors_in_batch = int(np.ceil(batch_size / len(data.ranking["papers"])))
+    print("num_authors_in_batch:", num_authors_in_batch)
     utility = []
-    for idx0 in range(0, len(data.ranking), batch_size):
-        print(f"Working on batch {int(idx0 / batch_size)} / {int(np.ceil(len(data.ranking) / batch_size))}")
-        utility.append(model.predict_proba(data, f"ranking_{idx0}_{idx0 + batch_size}"))
-    utility = np.hstack(utility)
-    ranking = data.ranking.copy()
-    ranking["utility"] = utility
-    utility = ranking.pivot(index='author', columns='paper', values=['utility'])
-    utility.columns = [c[1] for c in utility.columns]
-    utility.to_parquet(os.path.join(data_dir(config), f"ranking_utility.parquet"))
-    labels = ranking[ranking["label"]]
-    labels = labels[["author", "paper"]]
-    labels.to_parquet(os.path.join(data_dir(config), f"ranking_labels.parquet"))
+    for author_idx in tqdm(range(0, len(data.ranking["authors"]), num_authors_in_batch), "Calculating utility matrix"):
+        authors = data.get_ranking_authors(papers[0]["year"], author_idx, author_idx + num_authors_in_batch)
+        utility.append(model.predict_proba_ranking(papers, authors))
+    utility = pd.DataFrame(
+        np.vstack(utility),
+        index=data.ranking["authors"],
+        columns=data.ranking["papers"]
+    )
+    print("Saving to", output_path)
+    utility.to_parquet(output_path)
 
 
 def load_embeddings(config: dict):
@@ -80,7 +88,8 @@ Evaluate the ranker on the test fold
     ranker = get_ranker(config, items_to_rank)
     utility = pd.read_parquet(os.path.join(data_dir(config), f"ranking_utility.parquet"))
     paper_embeddings = load_embeddings(config)
-    labels = pd.read_parquet(os.path.join(data_dir(config), f"ranking_labels.parquet"))
+    data = Data(config)
+    labels = pd.DataFrame.from_records(data.ranking["pairs"], columns=["paper", "author"])
 
     # Use the ranker to rank the first `items_to_rank` papers for each author
     ranked = ranker.rank(utility, paper_embeddings)
@@ -123,7 +132,7 @@ Evaluate the ranker on the test fold
     for k in diversity_k:
         authors_diversity = []
         for ranked_papers in ranked.values():
-            embeddings = [paper_embeddings[paper] for paper in ranked_papers[:k]]
+            embeddings = [paper_embeddings[str(paper)] for paper in ranked_papers[:k]]
             authors_diversity.append(mean_consine_distance(embeddings))
         diversity.append(1. - np.mean(authors_diversity))
 
