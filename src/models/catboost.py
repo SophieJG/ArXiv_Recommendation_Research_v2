@@ -201,7 +201,7 @@ dictionaries to rows in a dataframe
         X_val = self.process_data(X_val, samples_val)
         self.model = CatBoostClassifier().fit(
             X_train, y_train, eval_set=[(X_val, y_val)], early_stopping_rounds=10, use_best_model=True
-        )
+            )
 
         # Retrieve feature names from the pipeline and print
         feature_names = self.feature_processing_pipeline.get_feature_names_out()
