@@ -137,7 +137,10 @@ dictionaries to rows in a dataframe
         X["bm25_avg_score"] = bm25_avg_scores
         return X
 
-    def fit(self, data: Data):
+    def fit(
+        self,
+        data: Data
+    ):
         """
 1. Fit the preprocessing pipeline on the training data
 2. Convert the training and validation data using the preprocessing pipeline
@@ -204,8 +207,8 @@ dictionaries to rows in a dataframe
 
     def predict_proba(self, data: Data, fold: str):
         """
-        Run inference on a fold
-        """
+Run inference on a fold
+"""
         assert self.model is not None
         X, _ = self.load_fold(data, fold)
         samples = data.get_fold(fold)
