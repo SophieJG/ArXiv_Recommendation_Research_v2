@@ -194,7 +194,7 @@ Query Semantic Scholar to get info about all papers
         json_save_path=papers_path(config),
         query_ids=[f"ARXIV:{id}" for id in kaggle_data["id"]],
         batch_size=100,
-        query_fields="year,authors,referenceCount,references.authors,citations.year,citations.authors",
+        query_fields="year,abstract,authors,referenceCount,references.authors,citations.year,citations.authors",
         query_url="https://api.semanticscholar.org/graph/v1/paper/batch",
         process_response_f=process_paper_response,
         citation_years=config["data"]["cication_years"]  # Additional arg for process_paper_response - passed using **kwargs
@@ -231,7 +231,7 @@ Query Semantic Scholar for all authores who cited a paper from the dataset
         # Process Semantic Scholar data for an author
         papers = [
             {
-                **{key: paper[key] for key in ["year", "title", "fieldsOfStudy"]},
+                **{key: paper[key] for key in ["year", "title", "abstract", "fieldsOfStudy"]},
                 "s2FieldsOfStudy": list(set([tmp["category"] for tmp in paper["s2FieldsOfStudy"] if tmp["category"] is not None]))
             }
             for paper in j["papers"] if paper["year"] is not None
@@ -245,7 +245,7 @@ Query Semantic Scholar for all authores who cited a paper from the dataset
         json_save_path=authors_path(config),
         query_ids=list(citing_authors),
         batch_size=batch_size,
-        query_fields="papers.year,papers.title,papers.fieldsOfStudy,papers.s2FieldsOfStudy",
+        query_fields="papers.year,papers.title,papers.abstract,papers.fieldsOfStudy,papers.s2FieldsOfStudy",
         query_url="https://api.semanticscholar.org/graph/v1/author/batch",
         process_response_f=process_author_response
     )

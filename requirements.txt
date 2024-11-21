@@ -8,3 +8,4 @@ scikit-learn
 catboost
 pyyaml
 argparse
+rank-bm25
