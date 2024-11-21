@@ -38,7 +38,7 @@ Nikhil for the full version
                     if author_embeddings is None:
                         score_w_diversity = score
                     else:
-                        paper_embedding = paper_embeddings[key]
+                        paper_embedding = paper_embeddings[str(key)]
                         # Because the diversity of the selected set is already fixed, we are interested only in the diversity between the set and the
                         # candidate paper
                         diversity_score = 1. - np.mean(np.dot(author_embeddings, paper_embedding))
@@ -49,9 +49,9 @@ Nikhil for the full version
                 author_reccomendation.append(best_item)
                 # Add the selected paper to the list of selected paper embeddings
                 if author_embeddings is None:
-                    author_embeddings = paper_embeddings[best_item]
+                    author_embeddings = paper_embeddings[str(best_item)]
                 else:
-                    author_embeddings = np.vstack([author_embeddings, paper_embeddings[best_item]])
+                    author_embeddings = np.vstack([author_embeddings, paper_embeddings[str(best_item)]])
             ranked[author] = author_reccomendation
                 
         return ranked        
