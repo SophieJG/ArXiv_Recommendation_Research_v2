@@ -186,14 +186,7 @@ def process_citing_papers(config: dict):
         json.dump(papers, f, indent=4)
 
 
-def unify_papers(config: dict):
-    print("\nUnifying paper data")
-    
-    output_path = papers_path(config)
-    if os.path.exists(output_path):
-        print(f"{output_path} exists - Skipping")
-        return
-    
+def load_all_papers_(config: dict):
     print("loading arxiv_papers")
     arxiv_papers = json.load(open(os.path.join(tmp_data_dir(config), "paper_info.json")))
     print("loading citing_papers")
@@ -211,7 +204,22 @@ def unify_papers(config: dict):
     for paper_id, paper in tqdm(arxiv_papers.items(), "merging arxiv papers"):
         all_papers[paper_id] = paper
 
+    return all_papers, citing_papers
+
+
+def unify_papers(config: dict):
+    print("\nUnifying paper data")
+    output_path = papers_path(config)
+    if os.path.exists(output_path):
+        print(f"{output_path} exists - Skipping")
+        return
+    
+    all_papers, citing_papers = load_all_papers_(config)
+    abstracts = json.load(open(os.path.join(tmp_data_dir(config), "abstracts.json")))
+
     for paper_id, paper in tqdm(all_papers.items(), "adding citation data"):
+        if str(paper_id) in abstracts:
+            paper["abstract"] = abstracts[str(paper_id)]
         if "arxiv_id" not in paper:
             continue
         paper["citing_papers"] = list(set(citing_papers[paper_id])) if paper_id in citing_papers else []
@@ -221,7 +229,8 @@ def unify_papers(config: dict):
         "papers": 0,
         "non-arxiv papers": 0,
         "arxiv papers": 0,
-        "papers with citing_papers" : 0
+        "papers with citing_papers" : 0,
+        "papers with abstract" : 0
     }
     for paper in all_papers.values():
         cntrs["papers"] += 1
@@ -229,12 +238,12 @@ def unify_papers(config: dict):
         cntrs["arxiv papers"] += "arxiv_id" in paper
         if "arxiv_id" in paper:
             cntrs[f"papers with citing_papers"] += len(paper["citing_papers"]) > 0
+        cntrs[f"papers with abstract"] += "abstract" in paper
     print(json.dumps(cntrs, indent=4))
 
     print(f"Saving to {output_path}")
     with open(output_path, 'w') as f:
         json.dump(all_papers, f, indent=4)
-
 
 
 def process_authors(config: dict):
@@ -300,6 +309,44 @@ def process_authors(config: dict):
         print(f"Saving to {path}")
         with open(path, 'w') as f:
             json.dump(data, f, indent=4)
+
+
+def get_abstracts(config: dict):
+    print("\nUnifying paper data")
+    output_path = os.path.join(tmp_data_dir(config), "abstracts.json")
+    if os.path.exists(output_path):
+        print(f"{output_path} exists - Skipping")
+        return
+    
+    all_papers, _ = load_all_papers_(config)
+    paper_ids = list(all_papers.keys())
+    
+    def process_abstract_(path: str, paper_ids: list):
+        paper_ids = set([int(id) for id in paper_ids])
+
+        papers = {}
+        with gzip.open(path, "rt", encoding="UTF-8") as fin:
+            for l in fin:
+                j = json.loads(l)
+                if int(j["corpusid"]) not in paper_ids:
+                    continue
+                papers[j["corpusid"]] = j["abstract"]
+        return papers
+
+    dict_list = multi_file_query(
+        os.path.join(config["data"]["semantic_scholar_path"], "abstracts", "*.gz"),
+        process_abstract_,
+        config["data"]["n_jobs"],
+        paper_ids=paper_ids
+    )
+
+    papers = {}
+    for d in tqdm(dict_list, "merging files"):
+        papers.update(d)
+
+    print(f"Saving to {output_path}")
+    with open(output_path, 'w') as f:
+        json.dump(papers, f, indent=4)
 
 
 def kaggle_json_to_parquet(config: dict):
