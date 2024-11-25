@@ -151,11 +151,15 @@ Preprocesses the data by adding BM25 features and transforming features using th
             corpus_documents = []
             for paper_abstract, author_abstracts in tqdm(zip(X_train["abstract"], X_train["author_abstract"]), desc="Building BM25 corpus"):
                 corpus_documents.append(simple_tokenizer(paper_abstract))
+                if paper_abstract:  
+                    corpus_documents.append(simple_tokenizer(paper_abstract))
                 for author_abstract in author_abstracts:
-                    corpus_documents.append(simple_tokenizer(author_abstract))
+                    if author_abstract: 
+                        corpus_documents.append(simple_tokenizer(author_abstract))
             print("Initializing BM25 model")
             self.bm25_model = BM25Okapi(corpus_documents)
             self.add_bm25_features_(X_train)
+
 
         passthrough = ["referenceCount", "author_num_papers", "is_cited"]
         if self.use_bm25_features:
