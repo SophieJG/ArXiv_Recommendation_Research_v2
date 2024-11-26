@@ -168,9 +168,9 @@ The output of the ranking evaluation phase is a dictionary specifying the scores
 Diversity is defined as 1 minus the mean cosine distance between the top-k recommended papers - higher diversity implies a more diverse set.
 
 ## Data pipeline
-The system is built upon kaggle and Semantic Scholar (SemS) data files that were downloaded to directories specified in data config. The data already exists in the shared folder, so there's no need to download it again. In any case, download instructions can be found in the "Starting from scratch" section below.
+The system is built on the base of kaggle and Semantic Scholar (SemS) data files that were downloaded to directories specified in data config. The data already exists in the shared folder, so there's no need to download it again. In any case, full download instructions can be found in the "Starting from scratch" section below.
 
-Kaggle dataset is a list of arxiv papers and some info on each paper in json format. SemS data is much larger and includes several tables:
+The Kaggle dataset is a single table of arxiv papers and some info on each paper in json format. SemS data is much larger and includes several tables:
 - `papers` includes info on all papers including corpus id, arxiv id, author id list, year, title and categories
 - `citations` a list of pairs `<citing corpus id, cited corpus is>`
 - `abstracts` abstracts for all papers indexed by corpus id
@@ -206,24 +206,26 @@ python src/download_semantic_scholar_data.py
 The `Data` class internally holds three data structures:
 
 1. For each data fold (train/validation/test) a lists of triplets `<paper_id, author_id, label>`. A paper can be in at most one fold. An author can be in more than one fold. The test set could either be the year 2020 or from all years, see data config.
-2. A dictionary of authors info. The key is `author_id`
-3. A dictionary of papers info. The key is `paper_id`
-
-The data should be accessed using the `Data:get_fold()` function which returns a list of samples. Each sample contains the unstrucuted paper and author info.
+1. A dictionary of authors info. The key is `author_id`
+1. A dictionary of papers info. The key is `paper_id`
 
 In order to guarantee consistency, the author info is "shifted" in time to the year the paper was published. In practice, that implies removing all publications by the author that proceed (are after) the paper.
 
+For utility function purposes, the data should be accessed using the `Data:get_fold()` function which returns a list of samples. Each sample contains the unstrucuted paper and author info. For ranking method investigations, when the full matrix of papers and authors is needed, the proper manner for data access is by using the `Data:get_ranking_papers()` and `Data:get_ranking_authors()` methods.
+
 ### Model
 
-All models must inherit the base class `src/models/base_model.py` and override the 4 following functions:
+All models must inherit the base class `src/models/base_model.py` and override the 5 following functions:
 
 1. `fit(self, data: Data):` Fit the model on the data. In our case the model includes the preprocessing pipeline thus the fitting process entails (i) fitting the preprocessing pipeline; (ii) using the fitted preprocessing pipeline to transform the raw data into features and (iii) training the model on the processed data
 
-2. `predict_proba(self, data: Data, fold: str):` Do inference which entails preprocessing the raw data into features and running the model. `fold` is a string which can be `train`, `validation` or `test`.
+1. `predict_proba(self, samples: list):` Run inference on a list of samples
 
-3. `save_(self, path: str):` Save the model as files in the folder `path`
+1. `save_(self, path: str):` Save the model as files in the folder `path`
 
-4. `load_(self, path: str):` Load the model from the folder `path`
+1. `load_(self, path: str):` Load the model from the folder `path`
+
+1. (Ranking only) `predict_proba_ranking(self, papers: list, authors: list):` Run inference on the cartesian product between all papers and all authors. This functionality exists seperately from `predict_proba` because in many cases inference can be done more efficiently when there's a need to inference on such a cartesian product
 
 ### Embedder
 
