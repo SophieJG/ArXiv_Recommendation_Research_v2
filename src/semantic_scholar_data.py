@@ -52,9 +52,10 @@ Load all papers from the list `ids`. CorpusId and ArXiv ids are supported
 """
     def process_papers_(path: str, ids: list, id_type: str):
         # This function is used to process Semantic Scholar paper data files
+        assert id_type in ["CorpusId", "ArXiv"]
+        # load_papers could be called in parallel so it's important to copy the inputs to avoid locks
         ids = set([str(id) for id in ids])
         id_type = copy.deepcopy(id_type)
-        assert id_type in ["CorpusId", "ArXiv"]
         papers = {}
         with gzip.open(path, "rt", encoding="UTF-8") as fin:
             for l in fin:
@@ -66,6 +67,7 @@ Load all papers from the list `ids`. CorpusId and ArXiv ids are supported
                 if processed_paper is None:
                     continue
                 if id_type == "ArXiv":
+                    # Add arxiv_id if the paper is from Arxiv
                     processed_paper["arxiv_id"] = j["externalids"]["ArXiv"]
                 papers[j["corpusid"]] = processed_paper
         return papers
@@ -91,10 +93,12 @@ Query the `papers` table for the info of all papers that were selected from Arxi
 from getting their general info this function provide us with the corpus ids for these papers
 """
     print("\nLoading papers info from Semantic Scholar")
+
     output_path = os.path.join(tmp_data_dir(config), "paper_info.json")
     if os.path.exists(output_path):
         print(f"{output_path} exists - Skipping")
         return
+    
     kaggle_data = pd.read_parquet(kaggle_data_path(config))
     papers = load_papers(config, kaggle_data["id"], "ArXiv")
 
@@ -109,16 +113,19 @@ Using the list of corpus ids of the Arxiv papers we query the `citations` table 
 citing papers. This includes all citing papers, disregarding publication year
 """
     print("\nLoading citation info from Semantic Scholar")
+
     citing_papers_path = os.path.join(tmp_data_dir(config), "citing_papers.json")
     if os.path.exists(citing_papers_path):
         print(f"{citing_papers_path} exists - Skipping")
         return
+    
     paper_info = json.load(open(os.path.join(tmp_data_dir(config), "paper_info.json")))
     # corpus ids for arxiv papers
     arxiv_papers = [int(id) for id in paper_info.keys()]
 
     def process_citations_(path: str, ids: list):
         # return a list of pairs <cited id, citing id>. Cited id is in the set of `ids`
+        # process_citations_ could be called in parallel so it's important to copy the ids list to avoid locks
         ids = set([int(id) for id in ids])
         cited_citing_pairs = []
         with gzip.open(path, "rt", encoding="UTF-8") as fin:
@@ -137,7 +144,8 @@ citing papers. This includes all citing papers, disregarding publication year
         ids=arxiv_papers
     )
 
-    # multi_file_query returns a list of dicts. Merge it to a single dict
+    # multi_file_query returns a list of dicts. Merge it to a single dict. Note that a single paper can have citations in multiple
+    # res files so the dictionaries needs to be "deep" merged
     citing_papers = defaultdict(lambda: [])
     for cited_citing_pairs in tqdm(res, "merging files"):
         for cited, citing in cited_citing_pairs:
@@ -151,35 +159,37 @@ citing papers. This includes all citing papers, disregarding publication year
 def process_citing_papers(config: dict):
     """
 We are interested only in papers which cited Arxiv within `citation_years` of the Arxiv paper publication date.
-This filtering is done here by quering the `papers` table along with loading the info for all valid citing papers
+This filtering is done here by quering the `papers` table along with loading the info for all valid citing papers.
+If a paper cites several papers from Arxiv than it is included if it's valid for any of them
 """
     print("\nLoading citing papers info from Semantic Scholar")
     output_path = os.path.join(tmp_data_dir(config), "citing_paper_info.json")
     if os.path.exists(output_path):
         print(f"{output_path} exists - Skipping")
         return
-    # Load the info of all arxiv papers. Specifically we need the publication year and the list
+    # Load the info of all arxiv papers into the arxiv_papers dict. Specifically we need the publication year and the list
     # of citing papers
-    arxiv_papers = json.load(open(os.path.join(tmp_data_dir(config), "paper_info.json")))
+    paper_info = json.load(open(os.path.join(tmp_data_dir(config), "paper_info.json")))
     citing_papers = json.load(open(os.path.join(tmp_data_dir(config), "citing_papers.json")))
-    papers = {}
+    arxiv_papers = {}
     for paper_id, citing_ps in citing_papers.items():
-        papers[paper_id] = {
-            "year": arxiv_papers[paper_id]["year"],
+        arxiv_papers[paper_id] = {
+            "year": paper_info[paper_id]["year"],
             "citing_papers": citing_ps
         }
 
-    def process_citing_papers_(path: str, papers: dict, citation_years: int):
+    def process_citing_papers_(path: str, arxiv_papers: dict, citation_years: int):
         """
 Go over all papers in the `path` file. If the paper is a citing paper, and the publication
 year is in the `citation_years` years period following the arxiv paper publication
 (citing_paper_year < arxiv_paper_year + citation_years) then load this paper and it's info
-into the dataset
+into the dataset. If a paper cites several papers from Arxiv than it is included if it's valid
+for any of them
 """
         # This is a help dict with the goal of quickly checking if the paper is a citing
         # paper and getting the publication year of all the arxiv paper cited
         paper_ids = {}
-        for paper in papers.values():
+        for paper in arxiv_papers.values():
             arxiv_year = int(paper["year"])
             for id in paper["citing_papers"]:
                 if id not in paper_ids:
@@ -195,7 +205,7 @@ into the dataset
                     continue
                 citing_paper_year = int(j["year"])
                 # Go over all arxiv papers cited and check if the publication period is good
-                # for any of them
+                # for any of them. If it is good for at least one, this is a valid citing paper
                 is_citing = False
                 for arxiv_paper_year in paper_ids[j["corpusid"]]:
                     if citing_paper_year < arxiv_paper_year + citation_years:
@@ -213,21 +223,25 @@ into the dataset
         os.path.join(config["data"]["semantic_scholar_path"], "papers", "*.gz"),
         process_citing_papers_,
         config["data"]["n_jobs"],
-        papers=papers,
+        arxiv_papers=arxiv_papers,
         citation_years=config["data"]["citation_years"]
     )
 
     # multi_file_query returns a list of dicts. Merge it to a single dict
-    papers = {}
+    arxiv_papers = {}
     for d in tqdm(dict_list, "merging files"):
-        papers.update(d)
+        arxiv_papers.update(d)
 
     print(f"Saving to {output_path}")
     with open(output_path, 'w') as f:
-        json.dump(papers, f, indent=4)
+        json.dump(arxiv_papers, f, indent=4)
 
 
 def load_all_papers_(config: dict):
+    """
+This is a utility function that loads all papers from the different queries before the `unify_papers` stage.
+It should not be used after `unify_papers` was run
+"""
     print("loading arxiv_papers")
     arxiv_papers = json.load(open(os.path.join(tmp_data_dir(config), "paper_info.json")))
     print("loading citing_papers")
@@ -249,6 +263,9 @@ def load_all_papers_(config: dict):
 
 
 def unify_papers(config: dict):
+    """
+This stage unifies all previous paper queries into a single table including all papers, citing papers ids and abstracts
+"""
     print("\nUnifying paper data")
     output_path = papers_path(config)
     if os.path.exists(output_path):
@@ -289,9 +306,9 @@ def unify_papers(config: dict):
 
 def process_authors(config: dict):
     """
-The step above provided as with a list of all valid citing papers and for each such paper the list of it's authors.
-For each author, we need to get the list of publications that preceded the publication date of the cited Arxiv paper.
-This is done here by quering the `papers` table again
+This should be run after process_citing_papers which provided us with a list of all valid citing papers and for each
+such paper the list of it's authors. For each author, we need to get the list of publications that preceded the
+publication date of the cited Arxiv paper. This is done here by quering the `papers` table again
 """
     print("\nLoading citing authors info from Semantic Scholar")
     authors_output_path = authors_path(config)
@@ -446,8 +463,8 @@ def get_citing_authors(
 Get the set of all authors who cited the paper in the `citation_years` years that follow the paper's publication
 
 Arguments:
-    l: list of citations as received from Semantic Scholar
-    paper_year: the year of the paper being cited
+    citing_papers: list of citating papers
+    papers: the year of the paper being cited
     citation_years: hom many years after the paper publication to consider as citations
 """
     authors = set()
