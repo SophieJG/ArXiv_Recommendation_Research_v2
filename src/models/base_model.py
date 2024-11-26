@@ -37,8 +37,17 @@ class BaseModel:
     ):
         raise NotImplementedError("fit for base_model must be overloaded")
 
-    def predict_proba(self, data: Data, fold: str):
+    def predict_proba(self, samples: list):
+        """
+Run inference on a list of samples
+"""
         raise NotImplementedError("predict_proba for base_model must be overloaded")
+
+    def predict_proba_ranking(self, papers: list, authors: list):
+        """
+Run inference on the cartesian product between all papers and all authors
+"""
+        raise NotImplementedError("predict_proba_ranking for base_model must be overloaded")
 
     def save_(
         self,

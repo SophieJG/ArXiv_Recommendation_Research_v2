@@ -20,6 +20,11 @@ def multi_file_query(
     *args,
     **kwargs
 ):
+    """
+This is a utility function facilitating parallel load and processing of data from disk. All files 
+in `files_path` are processed by applying `processing_func` on them. The number of files processed
+in parallel is given by `n_jobs`. *args and **kwargs are passed to `processing_func`
+"""
     files = glob.glob(files_path)
     return Parallel(n_jobs=n_jobs)(delayed(processing_func)(f, *args, **kwargs) for f in tqdm(files, f"n_jobs={n_jobs}"))
 
@@ -42,7 +47,11 @@ def process_paper_data_(j: dict, allow_none_year: bool):
 
 
 def load_papers(config, ids: list, id_type: str):
+    """
+Load all papers from the list `ids`. CorpusId and ArXiv ids are supported
+"""
     def process_papers_(path: str, ids: list, id_type: str):
+        # This function is used to process Semantic Scholar paper data files
         ids = set([str(id) for id in ids])
         id_type = copy.deepcopy(id_type)
         assert id_type in ["CorpusId", "ArXiv"]
@@ -51,6 +60,7 @@ def load_papers(config, ids: list, id_type: str):
             for l in fin:
                 j = json.loads(l)
                 if j["externalids"][id_type] not in ids:
+                    # If the paper id is not in the set of required ids - ignore the paper
                     continue
                 processed_paper = process_paper_data_(j, allow_none_year=False)
                 if processed_paper is None:
@@ -68,6 +78,7 @@ def load_papers(config, ids: list, id_type: str):
         id_type=id_type
     )
 
+    # multi_file_query returns a list of dicts. Merge it to a single dict
     d_all = {}
     for d in tqdm(dict_list, "merging files"):
         d_all.update(d)
@@ -75,6 +86,10 @@ def load_papers(config, ids: list, id_type: str):
 
 
 def process_papers(config: dict):
+    """
+Query the `papers` table for the info of all papers that were selected from Arxiv Kaggle dataset. Apart
+from getting their general info this function provide us with the corpus ids for these papers
+"""
     print("\nLoading papers info from Semantic Scholar")
     output_path = os.path.join(tmp_data_dir(config), "paper_info.json")
     if os.path.exists(output_path):
@@ -89,14 +104,21 @@ def process_papers(config: dict):
 
 
 def process_citations(config: dict):
+    """
+Using the list of corpus ids of the Arxiv papers we query the `citations` table to get corpus ids for all
+citing papers. This includes all citing papers, disregarding publication year
+"""
     print("\nLoading citation info from Semantic Scholar")
     citing_papers_path = os.path.join(tmp_data_dir(config), "citing_papers.json")
     if os.path.exists(citing_papers_path):
         print(f"{citing_papers_path} exists - Skipping")
         return
     paper_info = json.load(open(os.path.join(tmp_data_dir(config), "paper_info.json")))
+    # corpus ids for arxiv papers
+    arxiv_papers = [int(id) for id in paper_info.keys()]
 
     def process_citations_(path: str, ids: list):
+        # return a list of pairs <cited id, citing id>. Cited id is in the set of `ids`
         ids = set([int(id) for id in ids])
         cited_citing_pairs = []
         with gzip.open(path, "rt", encoding="UTF-8") as fin:
@@ -112,9 +134,10 @@ def process_citations(config: dict):
         os.path.join(config["data"]["semantic_scholar_path"], "citations", "*.gz"),
         process_citations_,
         config["data"]["n_jobs"],
-        ids=[int(id) for id in paper_info.keys()]
+        ids=arxiv_papers
     )
 
+    # multi_file_query returns a list of dicts. Merge it to a single dict
     citing_papers = defaultdict(lambda: [])
     for cited_citing_pairs in tqdm(res, "merging files"):
         for cited, citing in cited_citing_pairs:
@@ -126,11 +149,17 @@ def process_citations(config: dict):
 
 
 def process_citing_papers(config: dict):
+    """
+We are interested only in papers which cited Arxiv within `citation_years` of the Arxiv paper publication date.
+This filtering is done here by quering the `papers` table along with loading the info for all valid citing papers
+"""
     print("\nLoading citing papers info from Semantic Scholar")
     output_path = os.path.join(tmp_data_dir(config), "citing_paper_info.json")
     if os.path.exists(output_path):
         print(f"{output_path} exists - Skipping")
         return
+    # Load the info of all arxiv papers. Specifically we need the publication year and the list
+    # of citing papers
     arxiv_papers = json.load(open(os.path.join(tmp_data_dir(config), "paper_info.json")))
     citing_papers = json.load(open(os.path.join(tmp_data_dir(config), "citing_papers.json")))
     papers = {}
@@ -141,6 +170,14 @@ def process_citing_papers(config: dict):
         }
 
     def process_citing_papers_(path: str, papers: dict, citation_years: int):
+        """
+Go over all papers in the `path` file. If the paper is a citing paper, and the publication
+year is in the `citation_years` years period following the arxiv paper publication
+(citing_paper_year < arxiv_paper_year + citation_years) then load this paper and it's info
+into the dataset
+"""
+        # This is a help dict with the goal of quickly checking if the paper is a citing
+        # paper and getting the publication year of all the arxiv paper cited
         paper_ids = {}
         for paper in papers.values():
             arxiv_year = int(paper["year"])
@@ -154,8 +191,11 @@ def process_citing_papers(config: dict):
             for l in fin:
                 j = json.loads(l)
                 if j["corpusid"] not in paper_ids or j["year"] is None:
+                    # If the paper is not a citing paper - ignore it
                     continue
                 citing_paper_year = int(j["year"])
+                # Go over all arxiv papers cited and check if the publication period is good
+                # for any of them
                 is_citing = False
                 for arxiv_paper_year in paper_ids[j["corpusid"]]:
                     if citing_paper_year < arxiv_paper_year + citation_years:
@@ -177,6 +217,7 @@ def process_citing_papers(config: dict):
         citation_years=config["data"]["citation_years"]
     )
 
+    # multi_file_query returns a list of dicts. Merge it to a single dict
     papers = {}
     for d in tqdm(dict_list, "merging files"):
         papers.update(d)
@@ -247,18 +288,26 @@ def unify_papers(config: dict):
 
 
 def process_authors(config: dict):
+    """
+The step above provided as with a list of all valid citing papers and for each such paper the list of it's authors.
+For each author, we need to get the list of publications that preceded the publication date of the cited Arxiv paper.
+This is done here by quering the `papers` table again
+"""
     print("\nLoading citing authors info from Semantic Scholar")
     authors_output_path = authors_path(config)
     author_papers_path = os.path.join(tmp_data_dir(config), "author_papers.json")
     if os.path.exists(authors_output_path):
         print(f"{authors_output_path} exists - Skipping")
         return
+    
+    # Get the ids of all authors of the citing papers
     citing_papers = json.load(open(os.path.join(tmp_data_dir(config), "citing_paper_info.json")))
     author_ids = []
     for citing_paper in citing_papers.values():
         author_ids += citing_paper["authors"]
 
     def process_authors_(f: str, author_ids: list):
+        # load the info of all authors from the set `author_ids`
         author_ids = set([int(id) for id in author_ids])
         author_papers = []
         papers = {}
@@ -312,6 +361,9 @@ def process_authors(config: dict):
 
 
 def get_abstracts(config: dict):
+    """
+We query the `abstracts` table to get the abstracts of all papers: Arxiv papers, citing papers and papers written by a citing author
+"""
     print("\nUnifying paper data")
     output_path = os.path.join(tmp_data_dir(config), "abstracts.json")
     if os.path.exists(output_path):
@@ -351,8 +403,8 @@ def get_abstracts(config: dict):
 
 def kaggle_json_to_parquet(config: dict):
     """
-Converts the json downloaded from kaggle to parquet and filters not-relevant papers. Currently only CS papers are used.
-Additionally, takes a random sample of config["data"]["num_papers"] papers
+Filter out all non-CS papers from kaggle dataset and randomly select a subset of `num_papers` papers as specified
+in the data config. Note that the paper ids used in this stage are Arxiv ids
 """
     if os.path.exists(kaggle_data_path(config)):
         print("Kaggle data already converted to parquet - Skipping")

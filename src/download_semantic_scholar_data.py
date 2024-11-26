@@ -14,12 +14,16 @@ def show_progress(block_num, block_size, total_size):
 
 
 def get_files(field: str):
+    """
+A utility function to download files from Semantic Scholar
+- An API_KEY from Semantic Scholar is required e.g. `export API_KEY=<your key>`
+"""
     api_key = os.environ.get('API_KEY')
     if api_key is None:
         raise RuntimeError("Semantic Scholar API key is None")
 
     response = requests.get(
-            f"https://api.semanticscholar.org/datasets/v1/release/2024-11-05/dataset/{field}",
+            f"https://api.semanticscholar.org/datasets/v1/release/{release}/dataset/{field}",
             headers={'x-api-key': api_key}
         )
     
@@ -43,6 +47,6 @@ def get_files(field: str):
     
 
 if __name__ == '__main__':
-    raise RuntimeError("Are you sure you want to run this? Data is already downloaded. See semantic_scholar_path in data configs")
+    raise RuntimeError("Are you sure you want to run this? Data is already downloaded. See the global variable path and semantic_scholar_path in data configs")
     for key in ["papers", "authors", "citations", "abstracts"]:
         get_files(key)

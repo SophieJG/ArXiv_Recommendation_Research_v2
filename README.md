@@ -7,7 +7,7 @@ This package enables the execution of all simulations related to the paper.
 ### Prerequisites
 - Python 3.12.4 or newer
 - Conda
-- Semantic Scholar API Key (required only for downloading Semantic Scholar data)
+- G2 cluster access, local run is not supported
 
 ### Code installation
 Clone the repository, create a conda environment and install the required dependencies:
@@ -17,14 +17,6 @@ cd ArXiv_Recommendation_Research_v2
 conda create --name arxiv python=3.12.4
 conda activate arxiv
 pip install -r requirements.txt
-```
-
-### Dataset prerequisites
-Download the public ArXiv Dataset available on [Kaggle](https://www.kaggle.com/datasets/Cornell-University/arxiv/data)
-
-Set the Semantic Scholar API Key as environemnt variable (as far as I could tell, the queries run fine without it)
-```bash
-export API_KEY=<your key>
 ```
 
 ## How to use
@@ -39,16 +31,13 @@ Additional configuration files may be required:
 
 For example, a run including all configuration files:
 ```bash
-python src/runner.py configs/runner.yml configs/data_1000.yml --model-config configs/catboost.yml --embedder-config configs/category_embedder.yml --ranker-config configs/utility_ranker.yml
+python src/runner.py configs/runner.yml configs/data_1k.yml --model-config configs/catboost.yml --embedder-config configs/category_embedder.yml --ranker-config configs/utility_ranker.yml
 ```
 
 ### Runner config
 The complete pipeline from dataset generation to ranking evaluation comprises many steps:
-- Dataset preparation:
-  - `kaggle_json_to_parquet` Converts the json downloaded from kaggle to parquet and filters not-relevant papers. Currently only CS papers are used.
-  - `query_papers` Query Semantic Scholar to get additional info about all papers
-  - `query_authors` Query Semantic Scholar for all authores who cited a paper from the dataset
-  - `generate_samples` Generate a list of sample triplets: `<paper_id, author_id, label>`. The label can be true (the author cited the paper) or false.
+- Dataset preparation
+  - See the Data pipeline section below
 - Paper embedding:
   - `train` Fit the paper embedder on the training data
 - Paper-author utility model training and evaluation:
@@ -63,11 +52,15 @@ The complete pipeline from dataset generation to ranking evaluation comprises ma
 The runner config file specifies which parts of the pipeline to run. See, for example, a runner config file that executes the paper-author utility model training and evaluation pipeline (`configs/runner.yml`):
 
 ```YAML
-data_queries:
+data:
   kaggle_json_to_parquet: True  # Prerequisite: None
-  query_papers: True  # Prerequisite: data_queries/kaggle_json_to_parquet
-  query_authors: True  # Prerequisite: data_queries/query_papers
-  generate_samples: True  # Prerequisite: data_queries/query_authors
+  process_papers: True  # Prerequisite: data/kaggle_json_to_parquet
+  process_citations: True  # Prerequisite: data/process_papers
+  process_citing_papers: True  # Prerequisite: data/process_citations
+  process_authors: True  # Prerequisite: data/process_citing_papers
+  get_abstracts: True  # Prerequisite: data/process_citing_papers
+  unify_papers: True  # Prerequisite: data/process_authors & data/get_abstracts
+  generate_samples: True  # Prerequisite: data/unify_papers
 paper_embedding:
   fit: False  # Prerequisite: data_queries
 model:
@@ -169,6 +162,41 @@ The output of the ranking evaluation phase is a dictionary specifying the scores
 }
 ```
 Diversity is defined as 1 minus the mean cosine distance between the top-k recommended papers - higher diversity implies a more diverse set.
+
+## Data pipeline
+The system is built upon kaggle and Semantic Scholar (SemS) data files that were downloaded to directories specified in data config. The data already exists in the shared folder, so there's no need to download it again. In any case, download instructions can be found in the "Starting from scratch" section below.
+
+Kaggle dataset is a list of arxiv papers and some info on each paper in json format. SemS data is much larger and includes several tables:
+- `papers` includes info on all papers including corpus id, arxiv id, author id list, year, title and categories
+- `citations` a list of pairs `<citing corpus id, cited corpus is>`
+- `abstracts` abstracts for all papers indexed by corpus id
+- `authors` (not used) little info for each author indexed by author id. Importantly, the papers written by each author are NOT included in this table
+
+Because the data is split between several tables, we need to do some merge operations. Specifically, we need to query the `papers` table multiple times. High level description of the data pipeline:
+1. `data/kaggle_json_to_parquet` - Filter out all non-CS papers from kaggle dataset and randomly select a subset of `num_papers` papers as specified in the data config. Note that the paper ids used in this stage are Arxiv ids
+2. `data/process_papers` - Query the `papers` table for the info of all papers that were selected from Arxiv Kaggle dataset. Apart from getting their general info this function provide us with the corpus ids for these papers
+3. `data/process_citations` - Using the list of corpus ids of the Arxiv papers we query the `citations` table to get corpus ids for all citing papers. This includes all citing papers, disregarding publication year
+4. `data/process_citing_papers` - We are interested only in papers which cited Arxiv within `citation_years` of the Arxiv paper publication date. This filtering is done here by quering the `papers` table along with loading the info for all valid citing papers
+5. `data/process_authors` - The step above provided as with a list of all valid citing papers and for each such paper the list of it's authors. For each author, we need to get the list of publications that preceded the publication date of the cited Arxiv paper. This is done here by quering the `papers` table again
+6. `data/get_abstracts` - We query the `abstracts` table to get the abstracts of all papers: Arxiv papers, citing papers and papers written by a citing author
+7. `data/unify_papers` - This stage unifies all previous paper queries into a single table including all papers, citing author ids and abstracts
+8. `data/generate_samples` - Split the papers into training, validation and test folds. All valid citations are used as positive samples. Negative samples are generated by sampling
+
+### Starting from scratch
+Download the public ArXiv Dataset available on [Kaggle](https://www.kaggle.com/datasets/Cornell-University/arxiv/data)
+
+Set the Semantic Scholar API Key as environemnt variable
+```bash
+export API_KEY=<your key>
+```
+
+Run
+```
+python src/download_semantic_scholar_data.py
+```
+
+
+
 ## Main classes
 
 ### The Data class

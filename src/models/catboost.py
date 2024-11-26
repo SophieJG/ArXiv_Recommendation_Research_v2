@@ -90,7 +90,7 @@ dictionaries to rows in a dataframe
 
     def predict_proba(self, samples: list):
         """
-Run inference on a fold
+Run inference on a list of samples
 """
         assert self.model is not None
         X, _ = self.samples_to_dataframe_(samples)
