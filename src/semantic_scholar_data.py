@@ -24,67 +24,70 @@ def multi_file_query(
 This is a utility function facilitating parallel load and processing of data from disk. All files 
 in `files_path` are processed by applying `processing_func` on them. The number of files processed
 in parallel is given by `n_jobs`. *args and **kwargs are passed to `processing_func`
+
+Arguments:
+    files_path: the path to the list of files to load and process. We run glob(files_path) to get the list
+        of files
+    processing_func: the function used to process the chunk files
+    n_jobs: how many processes to run in parallel
+    *args: passed to processing_func
+    **kwargs: passed to processing_func
+
+Returns:
+    a list containing the outputs of processing_func
 """
     files = glob.glob(files_path)
     return Parallel(n_jobs=n_jobs)(delayed(processing_func)(f, *args, **kwargs) for f in tqdm(files, f"n_jobs={n_jobs}"))
 
 
-def parse_s2fieldsofstudy_(fieldsofstudy_list: list):
+def _parse_s2fieldsofstudy(fieldsofstudy_list: list):
     if fieldsofstudy_list is None:
         return []
     return list(set([fieldsofstudy["category"] for fieldsofstudy in fieldsofstudy_list if fieldsofstudy["category"] is not None]))
 
 
-def process_paper_data_(j: dict, allow_none_year: bool):
-    # Process Semantic Scholar data for a paper
+def _process_paper_data(j: dict, allow_none_year: bool):
+    """
+Process SemS data of a single paper from the `papers` table
+"""
     if not allow_none_year and j["year"] is None:
         return None
     return {
         "authors": list(set([int(tmp["authorId"]) for tmp in j["authors"] if tmp["authorId"] is not None])),
-        "s2fieldsofstudy": parse_s2fieldsofstudy_(j["s2fieldsofstudy"]),
+        "s2fieldsofstudy": _parse_s2fieldsofstudy(j["s2fieldsofstudy"]),
         **{k: j[k] for k in ["title", "year", "referencecount", "publicationdate"]}
     }
 
 
-def load_papers(config, ids: list, id_type: str):
+def _process_papers_inner(path: str, ids: list, id_type: str):
     """
-Load all papers from the list `ids`. CorpusId and ArXiv ids are supported
+A helper function to process a single SemS papers chunk file. Should only be called through process_papers. Go
+over all papers in the file and returns the info of all papers with id in `ids`
+
+Arguments:
+    path: the file to load and process
+    ids: a list of strings/integers specifying which papers to load
+    id_type: either CorpusId or ArXiv
 """
-    def process_papers_(path: str, ids: list, id_type: str):
-        # This function is used to process Semantic Scholar paper data files
-        assert id_type in ["CorpusId", "ArXiv"]
-        # load_papers could be called in parallel so it's important to copy the inputs to avoid locks
-        ids = set([str(id) for id in ids])
-        id_type = copy.deepcopy(id_type)
-        papers = {}
-        with gzip.open(path, "rt", encoding="UTF-8") as fin:
-            for l in fin:
-                j = json.loads(l)
-                if j["externalids"][id_type] not in ids:
-                    # If the paper id is not in the set of required ids - ignore the paper
-                    continue
-                processed_paper = process_paper_data_(j, allow_none_year=False)
-                if processed_paper is None:
-                    continue
-                if id_type == "ArXiv":
-                    # Add arxiv_id if the paper is from Arxiv
-                    processed_paper["arxiv_id"] = j["externalids"]["ArXiv"]
-                papers[j["corpusid"]] = processed_paper
-        return papers
-
-    dict_list = multi_file_query(
-        os.path.join(config["data"]["semantic_scholar_path"], "papers", "*.gz"),
-        process_papers_,
-        config["data"]["n_jobs"],
-        ids=ids,
-        id_type=id_type
-    )
-
-    # multi_file_query returns a list of dicts. Merge it to a single dict
-    d_all = {}
-    for d in tqdm(dict_list, "merging files"):
-        d_all.update(d)
-    return d_all
+    assert id_type in ["CorpusId", "ArXiv"]
+    # _load_papers_inner could be called in parallel so it's important to copy the inputs to avoid locks
+    ids = set([str(id) for id in ids])
+    id_type = copy.deepcopy(id_type)
+    papers = {}
+    with gzip.open(path, "rt", encoding="UTF-8") as fin:
+        for l in fin:
+            j = json.loads(l)
+            if j["externalids"][id_type] not in ids:
+                # If the paper id is not in the set of required ids - ignore the paper
+                continue
+            processed_paper = _process_paper_data(j, allow_none_year=False)
+            if processed_paper is None:
+                continue
+            if id_type == "ArXiv":
+                # Add arxiv_id if the paper is from Arxiv
+                processed_paper["arxiv_id"] = j["externalids"]["ArXiv"]
+            papers[j["corpusid"]] = processed_paper
+    return papers
 
 
 def process_papers(config: dict):
@@ -100,11 +103,44 @@ from getting their general info this function provide us with the corpus ids for
         return
     
     kaggle_data = pd.read_parquet(kaggle_data_path(config))
-    papers = load_papers(config, kaggle_data["id"], "ArXiv")
+    dict_list = multi_file_query(
+        os.path.join(config["data"]["semantic_scholar_path"], "papers", "*.gz"),
+        _process_papers_inner,
+        config["data"]["n_jobs"],
+        ids=kaggle_data["id"],
+        id_type="ArXiv"
+    )
+
+    # multi_file_query returns a list of dicts. Merge it to a single dict
+    papers = {}
+    for d in tqdm(dict_list, "merging files"):
+        papers.update(d)
 
     print(f"Saving to {output_path}")
     with open(output_path, 'w') as f:
         json.dump(papers, f, indent=4)
+
+
+def _process_citations_inner(path: str, cited_ids: list):
+    """
+A helper function to process a single SemS citations chunk file. Should only be called through process_citations
+return a list of pairs <cited id, citing id>. Cited id is in the set of `cited_ids`
+
+Arguments:
+    path: the file to load and process
+    cited_ids: a list paper corpus ids
+"""
+    # _process_citations_inner could be called in parallel so it's important to copy the ids list to avoid locks
+    cited_ids = set([int(id) for id in cited_ids])
+    cited_citing_pairs = []
+    with gzip.open(path, "rt", encoding="UTF-8") as fin:
+        for l in fin:
+            j = json.loads(l)
+            if j["citingcorpusid"] is None or j["citedcorpusid"] is None:
+                continue
+            if j["citedcorpusid"] in cited_ids:
+                cited_citing_pairs.append((int(j["citedcorpusid"]), int(j["citingcorpusid"])))
+    return cited_citing_pairs
 
 
 def process_citations(config: dict):
@@ -123,23 +159,9 @@ citing papers. This includes all citing papers, disregarding publication year
     # corpus ids for arxiv papers
     arxiv_papers = [int(id) for id in paper_info.keys()]
 
-    def process_citations_(path: str, ids: list):
-        # return a list of pairs <cited id, citing id>. Cited id is in the set of `ids`
-        # process_citations_ could be called in parallel so it's important to copy the ids list to avoid locks
-        ids = set([int(id) for id in ids])
-        cited_citing_pairs = []
-        with gzip.open(path, "rt", encoding="UTF-8") as fin:
-            for l in fin:
-                j = json.loads(l)
-                if j["citingcorpusid"] is None or j["citedcorpusid"] is None:
-                    continue
-                if j["citedcorpusid"] in ids:
-                    cited_citing_pairs.append((int(j["citedcorpusid"]), int(j["citingcorpusid"])))
-        return cited_citing_pairs
-    
     res = multi_file_query(
         os.path.join(config["data"]["semantic_scholar_path"], "citations", "*.gz"),
-        process_citations_,
+        _process_citations_inner,
         config["data"]["n_jobs"],
         ids=arxiv_papers
     )
@@ -154,6 +176,48 @@ citing papers. This includes all citing papers, disregarding publication year
     print(f"Saving to {citing_papers_path}")
     with open(citing_papers_path, 'w') as f:
         json.dump(citing_papers, f, indent=4)
+
+
+def _process_citing_papers_inner(path: str, arxiv_papers: dict, citation_years: int):
+    """
+A helper function to process a single SemS papers chunk file. Should only be called through process_citing_papers.
+Go over all papers in the `path` file. If the paper is a citing paper, and the publication year is in the 
+`citation_years` years period following the arxiv paper publication (citing_paper_year < arxiv_paper_year + citation_years)
+then load this paper and it's info into the dataset. If a paper cites several papers from Arxiv than it is included 
+if it's valid for any of them
+"""
+    # paper_ids is a help dict with the goal of quickly checking if the paper is a citing paper and getting the 
+    # publication year of all the arxiv paper cited
+    paper_ids = {}
+    for paper in arxiv_papers.values():
+        arxiv_year = int(paper["year"])
+        for id in paper["citing_papers"]:
+            if id not in paper_ids:
+                paper_ids[id] = []
+            paper_ids[id].append(arxiv_year)
+
+    papers = {}
+    with gzip.open(path, "rt", encoding="UTF-8") as fin:
+        for l in fin:
+            j = json.loads(l)
+            if j["corpusid"] not in paper_ids or j["year"] is None:
+                # If the paper is not a citing paper - ignore it
+                continue
+            citing_paper_year = int(j["year"])
+            # Go over all arxiv papers cited and check if the publication period is good
+            # for any of them. If it is good for at least one, this is a valid citing paper
+            is_citing = False
+            for arxiv_paper_year in paper_ids[j["corpusid"]]:
+                if citing_paper_year < arxiv_paper_year + citation_years:
+                    is_citing = True
+                    break
+            if not is_citing:
+                continue
+            processed_paper = _process_paper_data(j, allow_none_year=False)
+            if processed_paper is None:
+                continue
+            papers[j["corpusid"]] = processed_paper
+    return papers
 
 
 def process_citing_papers(config: dict):
@@ -178,50 +242,9 @@ If a paper cites several papers from Arxiv than it is included if it's valid for
             "citing_papers": citing_ps
         }
 
-    def process_citing_papers_(path: str, arxiv_papers: dict, citation_years: int):
-        """
-Go over all papers in the `path` file. If the paper is a citing paper, and the publication
-year is in the `citation_years` years period following the arxiv paper publication
-(citing_paper_year < arxiv_paper_year + citation_years) then load this paper and it's info
-into the dataset. If a paper cites several papers from Arxiv than it is included if it's valid
-for any of them
-"""
-        # This is a help dict with the goal of quickly checking if the paper is a citing
-        # paper and getting the publication year of all the arxiv paper cited
-        paper_ids = {}
-        for paper in arxiv_papers.values():
-            arxiv_year = int(paper["year"])
-            for id in paper["citing_papers"]:
-                if id not in paper_ids:
-                    paper_ids[id] = []
-                paper_ids[id].append(arxiv_year)
-
-        papers = {}
-        with gzip.open(path, "rt", encoding="UTF-8") as fin:
-            for l in fin:
-                j = json.loads(l)
-                if j["corpusid"] not in paper_ids or j["year"] is None:
-                    # If the paper is not a citing paper - ignore it
-                    continue
-                citing_paper_year = int(j["year"])
-                # Go over all arxiv papers cited and check if the publication period is good
-                # for any of them. If it is good for at least one, this is a valid citing paper
-                is_citing = False
-                for arxiv_paper_year in paper_ids[j["corpusid"]]:
-                    if citing_paper_year < arxiv_paper_year + citation_years:
-                        is_citing = True
-                        break
-                if not is_citing:
-                    continue
-                processed_paper = process_paper_data_(j, allow_none_year=False)
-                if processed_paper is None:
-                    continue
-                papers[j["corpusid"]] = processed_paper
-        return papers
-
     dict_list = multi_file_query(
         os.path.join(config["data"]["semantic_scholar_path"], "papers", "*.gz"),
-        process_citing_papers_,
+        _process_citing_papers_inner,
         config["data"]["n_jobs"],
         arxiv_papers=arxiv_papers,
         citation_years=config["data"]["citation_years"]
@@ -237,7 +260,7 @@ for any of them
         json.dump(arxiv_papers, f, indent=4)
 
 
-def load_all_papers_(config: dict):
+def _load_all_papers(config: dict):
     """
 This is a utility function that loads all papers from the different queries before the `unify_papers` stage.
 It should not be used after `unify_papers` was run
@@ -272,7 +295,7 @@ This stage unifies all previous paper queries into a single table including all 
         print(f"{output_path} exists - Skipping")
         return
     
-    all_papers, citing_papers = load_all_papers_(config)
+    all_papers, citing_papers = _load_all_papers(config)
     abstracts = json.load(open(os.path.join(tmp_data_dir(config), "abstracts.json")))
 
     for paper_id, paper in tqdm(all_papers.items(), "adding citation data"):
@@ -304,11 +327,48 @@ This stage unifies all previous paper queries into a single table including all 
         json.dump(all_papers, f, indent=4)
 
 
+def _process_authors_inner(path: str, author_ids: list):
+    """
+A helper function to process a single SemS papers chunk file. Should only be called through process_authors.
+Go over all papers in the `path` file. If the paper was authored by one of the authors in author_ids, add this 
+paper to the publication set of the author and get the paper info
+
+Arguments:
+    path: the file to load and process
+    author_ids: a list of authorids
+
+Returns:
+    author_papers: dict. Keyed by author id, the items are lists of corpus ids containing for each author the
+        list of published papers
+    papers: dict. Keyed by paper id. Info for papers written by the authors in author_ids
+"""
+    # _process_authors_inner could be called in parallel so it's important to copy the ids list to avoid locks
+    author_ids = set([int(id) for id in author_ids])
+    author_papers = []
+    papers = {}
+    with gzip.open(path, "rt", encoding="UTF-8") as fin:
+        for l in fin:
+            j = json.loads(l)
+            if j["authors"] is None:
+                continue
+            paper_belong_to_author = False
+            for author in j["authors"]:
+                if author["authorId"] is None:
+                    continue
+                author_id = int(author["authorId"])
+                if author_id in author_ids:
+                    paper_belong_to_author = True
+                    author_papers.append((author_id, j["corpusid"]))
+            if paper_belong_to_author:
+                papers[int(j["corpusid"])] = _process_paper_data(j, allow_none_year=True)
+    return author_papers, papers
+
+
 def process_authors(config: dict):
     """
-This should be run after process_citing_papers which provided us with a list of all valid citing papers and for each
-such paper the list of it's authors. For each author, we need to get the list of publications that preceded the
-publication date of the cited Arxiv paper. This is done here by quering the `papers` table again
+Get, for each author, it's list of publications and the info on each publication. This is done here by quering the `papers` table.
+Additionally, we filter out all authors with more than `max_author_papers` publications and the related papers. We believe that these
+result from errors in Semantic Scholar's name disambiguation logic
 """
     print("\nLoading citing authors info from Semantic Scholar")
     authors_output_path = authors_path(config)
@@ -323,35 +383,15 @@ publication date of the cited Arxiv paper. This is done here by quering the `pap
     for citing_paper in citing_papers.values():
         author_ids += citing_paper["authors"]
 
-    def process_authors_(f: str, author_ids: list):
-        # load the info of all authors from the set `author_ids`
-        author_ids = set([int(id) for id in author_ids])
-        author_papers = []
-        papers = {}
-        with gzip.open(f, "rt", encoding="UTF-8") as fin:
-            for l in fin:
-                j = json.loads(l)
-                if j["authors"] is None:
-                    continue
-                paper_belong_to_author = False
-                for author in j["authors"]:
-                    if author["authorId"] is None:
-                        continue
-                    author_id = int(author["authorId"])
-                    if author_id in author_ids:
-                        paper_belong_to_author = True
-                        author_papers.append((author_id, j["corpusid"]))
-                if paper_belong_to_author:
-                    papers[int(j["corpusid"])] = process_paper_data_(j, allow_none_year=True)
-        return author_papers, papers
-    
     res = multi_file_query(
         os.path.join(config["data"]["semantic_scholar_path"], "papers", "*.gz"),
-        process_authors_,
+        _process_authors_inner,
         config["data"]["n_jobs"],
         author_ids
     )
 
+    # Res is a list of pairs <author_papers, papers>. An author could appear in two author_papers dicts so we need to merge
+    # the author dicts carefully
     author_papers = defaultdict(lambda: [])
     papers = {}
     for author_papers_, papers_ in tqdm(res, "merging files"):
@@ -359,6 +399,8 @@ publication date of the cited Arxiv paper. This is done here by quering the `pap
             author_papers[author_id].append(corpus_id)
         papers.update(papers_)
 
+    # Drop all authors with more than `max_author_papers` publications and the related papers. We believe that these
+    # result from errors in Semantic Scholar's name disambiguation logic
     valid_authors = {}
     valid_paper_ids = set()
     for author, ps in author_papers.items():
@@ -368,13 +410,25 @@ publication date of the cited Arxiv paper. This is done here by quering the `pap
             valid_paper_ids.union(ps)
     print(f"valid authors: {len(valid_authors)} / {len(author_papers)}")
     print(f"valid papers: {len(valid_paper_ids)} / {len(papers)}")
-
     valid_papers = {id: papers[id] for id in valid_paper_ids}
 
     for path, data in zip([authors_output_path, author_papers_path], [valid_authors, valid_papers]):
         print(f"Saving to {path}")
         with open(path, 'w') as f:
             json.dump(data, f, indent=4)
+
+
+def _process_abstract_inner(path: str, paper_ids: list):
+    paper_ids = set([int(id) for id in paper_ids])
+
+    abstracts = {}
+    with gzip.open(path, "rt", encoding="UTF-8") as fin:
+        for l in fin:
+            j = json.loads(l)
+            if int(j["corpusid"]) not in paper_ids:
+                continue
+            abstracts[j["corpusid"]] = j["abstract"]
+    return abstracts
 
 
 def get_abstracts(config: dict):
@@ -387,35 +441,23 @@ We query the `abstracts` table to get the abstracts of all papers: Arxiv papers,
         print(f"{output_path} exists - Skipping")
         return
     
-    all_papers, _ = load_all_papers_(config)
+    all_papers, _ = _load_all_papers(config)
     paper_ids = list(all_papers.keys())
     
-    def process_abstract_(path: str, paper_ids: list):
-        paper_ids = set([int(id) for id in paper_ids])
-
-        papers = {}
-        with gzip.open(path, "rt", encoding="UTF-8") as fin:
-            for l in fin:
-                j = json.loads(l)
-                if int(j["corpusid"]) not in paper_ids:
-                    continue
-                papers[j["corpusid"]] = j["abstract"]
-        return papers
-
     dict_list = multi_file_query(
         os.path.join(config["data"]["semantic_scholar_path"], "abstracts", "*.gz"),
-        process_abstract_,
+        _process_abstract_inner,
         config["data"]["n_jobs"],
         paper_ids=paper_ids
     )
 
-    papers = {}
+    abstracts = {}
     for d in tqdm(dict_list, "merging files"):
-        papers.update(d)
+        abstracts.update(d)
 
     print(f"Saving to {output_path}")
     with open(output_path, 'w') as f:
-        json.dump(papers, f, indent=4)
+        json.dump(abstracts, f, indent=4)
 
 
 def kaggle_json_to_parquet(config: dict):
@@ -632,9 +674,9 @@ data is split so if a paper id exists in one split, it would not be put in the o
 and then placing the samples according to the paper id.
 
 Arguments:
-df: Pandas DataFrame to be split. Must include "year" and "paper" columns.
-test_size: The size of the second fold. 0 < test_size < 1
-random_state: int
+    df: Pandas DataFrame to be split. Must include "year" and "paper" columns.
+    test_size: The size of the second fold. 0 < test_size < 1
+    random_state: int
 """
     papers = df.groupby("paper").agg({"year": {"first"}})
     papers_train, papers_test = train_test_split(papers, test_size=test_size, random_state=random_state)

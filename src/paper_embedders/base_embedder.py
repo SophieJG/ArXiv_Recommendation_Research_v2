@@ -17,7 +17,7 @@ class BaseEmbedder:
         path = os.path.join(path, f"{model}.{version}")
         print(f"Saving {model} embedder to {path}")
         os.makedirs(path, exist_ok=True)
-        self.save_(path)
+        self._save(path)
 
     def load(
         self,
@@ -27,7 +27,7 @@ class BaseEmbedder:
     ):
         path = os.path.join(path, f"{model}.{version}")
         print(f"Loading {model} embedder from {path}")
-        self.load_(path)
+        self._load(path)
 
     def fit(
         self,
@@ -41,13 +41,13 @@ class BaseEmbedder:
     ):
         raise NotImplementedError("embed for BaseEmbedder must be overloaded")
 
-    def save_(
+    def _save(
         self,
         path: str
     ):
         raise NotImplementedError("save_ for BaseEmbedder must be overloaded")
 
-    def load_(
+    def _load(
         self,
         path: str
     ):

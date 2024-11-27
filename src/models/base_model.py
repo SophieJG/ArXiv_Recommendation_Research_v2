@@ -18,7 +18,7 @@ class BaseModel:
         path = os.path.join(path, f"{model}.{version}")
         print(f"Saving {model} model to {path}")
         os.makedirs(path, exist_ok=True)
-        self.save_(path)
+        self._save(path)
 
     def load(
         self,
@@ -28,7 +28,7 @@ class BaseModel:
     ):
         path = os.path.join(path, f"{model}.{version}")
         print(f"Loading {model} model from {path}")
-        self.load_(path)
+        self._load(path)
 
     def fit(
         self,
@@ -49,13 +49,13 @@ Run inference on the cartesian product between all papers and all authors
 """
         raise NotImplementedError("predict_proba_ranking for base_model must be overloaded")
 
-    def save_(
+    def _save(
         self,
         path: str
     ):
         raise NotImplementedError("save_ for base_model must be overloaded")
 
-    def load_(
+    def _load(
         self,
         path: str
     ):

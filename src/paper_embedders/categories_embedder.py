@@ -48,7 +48,7 @@ Creates paper embedding by applying bag of words on the `categories` field. Note
         # Apply the sklearn pipeline on the data
         return self.pipeline.transform(self.papers_to_dataframe(papers))
 
-    def save_(
+    def _save(
         self,
         path: str
     ):
@@ -56,7 +56,7 @@ Creates paper embedding by applying bag of words on the `categories` field. Note
         with open(os.path.join(path, "pipeline.pkl"), "wb") as f:
             joblib.dump(self.pipeline, f, protocol=5)        
 
-    def load_(
+    def _load(
         self,
         path: str
     ):
