@@ -163,7 +163,7 @@ citing papers. This includes all citing papers, disregarding publication year
         os.path.join(config["data"]["semantic_scholar_path"], "citations", "*.gz"),
         _process_citations_inner,
         config["data"]["n_jobs"],
-        ids=arxiv_papers
+        cited_ids=arxiv_papers
     )
 
     # multi_file_query returns a list of dicts. Merge it to a single dict. Note that a single paper can have citations in multiple

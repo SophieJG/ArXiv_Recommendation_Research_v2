@@ -1,5 +1,5 @@
 arxiv_json_path: "/share/garg/arxiv_kaggle/arxiv-metadata-oai-snapshot.json"  # Path to the file downloaded from kaggle
-semantic_scholar_path: "/share/garg/semantic_scholar_Nov2024/2024-11-05"
+semantic_scholar_path: "/share/garg/semantic_scholar_Nov2024/2024-11-05"  # Path to the data downloaded from Semantic Scholar
 
 base_path: "/share/garg/arxiv_runs/tom_10k/"  # Path to store data and models
 test_is_2020: True  # When this flag is set to true the test set is the year 2020, validation is 2019 and the rest is training. Otherwise the splits are random
