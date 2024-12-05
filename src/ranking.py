@@ -60,8 +60,8 @@ Load pre-calculated paper embeddings
     paper_ids = tmp["paper_ids"]
     embeddings = tmp["embeddings"]
     # Verify that embedding vectors are normalized
-    for norm in np.square(embeddings).sum(axis=1):
-        assert norm >= 0.999 and norm <= 1.001
+    for norm in np.linalg.norm(embeddings, axis=1):
+        assert norm >= 0.999 and norm <= 1.001, f"Embedding l2 norm is {norm}"
     return {
         paper_ids[idx]: embeddings[idx, :] for idx in range(len(paper_ids))
     }
