@@ -45,7 +45,7 @@ class Specter2EmbeddingsTransformer(BaseEstimator, TransformerMixin):
             X = X.tolist()
 
         # Use ProcessPoolExecutor for multiprocessing
-        max_workers = 2 #os.cpu_count() or 1
+        max_workers = 20 or 1
         print(f"Using {max_workers} processes for embedding computation")
 
         # Use ProcessPoolExecutor with individual memory space to parallelize the embedding computation

@@ -37,7 +37,6 @@ class MLPClassifier(BaseModel):
         self.feature_processing_pipeline = None
         self.input_size = None  # To be dynamically set during training
         self.params = params
-        # abstract_transformer = Specter2EmbeddingsTransformer()
 
         # Define the preprocessing pipeline
         self.feature_processing_pipeline = ColumnTransformer([
@@ -138,7 +137,7 @@ class MLPClassifier(BaseModel):
         optimizer = optim.Adam(self.model.parameters(), lr=0.001)
 
         # Training loop
-        epochs = 15
+        epochs = 50
         for epoch in range(epochs):
             optimizer.zero_grad()
             outputs = self.model(X_train)
