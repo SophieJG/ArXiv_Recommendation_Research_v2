@@ -37,6 +37,7 @@ class CatboostModel(BaseModel):
         self.model = None
         self.feature_processing_pipeline = None
         self.use_bm25_features = params["use_bm25_features"]
+        self.use_abstract_vectorizer = params["use_abstract_vectorizer"]
 
     def compute_bm25_score_(self, query_tokens, doc_tokens):
         """
@@ -123,6 +124,7 @@ dictionaries to rows in a dataframe
             new_sample["is_cited"] = int(sample["author"]["id"]) in sample["cited_authors"]  # Does the paper cites the author
             new_samples.append(new_sample)
         df = pd.DataFrame.from_records(new_samples)
+        df["abstract"] = df["abstract"].fillna("") ## Handle target papers' abstracts are "None"
         X = df[[col for col in df.columns if col != "label"]]
         y = df["label"]
         return X, y
@@ -164,13 +166,20 @@ Preprocesses the data by adding BM25 features and transforming features using th
         if self.use_bm25_features:
             passthrough += ["bm25_max_score", "bm25_avg_score"]
 
-        self.feature_processing_pipeline = ColumnTransformer([
+        transformers = [
             ('passthrough', 'passthrough', passthrough),
             ("paper_categories", CountVectorizer(analyzer=passthrough_func), "categories"),
             ("title", CountVectorizer(), "title"),
             ("author_fieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_fieldsOfStudy"),
             ("author_s2FieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_s2FieldsOfStudy"),
-        ])
+        ]
+
+        # If not using BM25, and the user wants to use the abstract vectorizer, add a CountVectorizer on the abstract
+        if not self.use_bm25_features and self.use_abstract_vectorizer:
+            transformers.append(("abstract", CountVectorizer(), "abstract"))
+
+        self.feature_processing_pipeline = ColumnTransformer(transformers)
+
         X_train = self.feature_processing_pipeline.fit_transform(X_train)
         print("Training data size:", X_train.shape, " type:", type(X_train))
 
@@ -215,4 +224,3 @@ Run inference on a fold
             # Load BM25 model, author indices, and corpus documents
             with open(os.path.join(path, "bm25_model.pkl"), "rb") as f:
                 self.bm25_model = joblib.load(f)
-
