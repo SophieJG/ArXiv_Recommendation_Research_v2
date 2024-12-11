@@ -123,11 +123,11 @@ dictionaries to rows in a dataframe
                     new_sample["author_abstract"].append(p["abstract"])
             new_sample["is_cited"] = int(sample["author"]["id"]) in sample["cited_authors"]  # Does the paper cites the author
             new_samples.append(new_sample)
-        df = pd.DataFrame.from_records(new_samples) 
+        df = pd.DataFrame.from_records(new_samples)
         df["abstract"] = df["abstract"].fillna("") ## Handle target papers' abstracts are "None"
         X = df[[col for col in df.columns if col != "label"]]
         y = df["label"]
-        return X, y        
+        return X, y
 
     def preprocess_data_(self, X):
         """
