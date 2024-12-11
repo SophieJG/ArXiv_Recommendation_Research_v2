@@ -7,11 +7,11 @@ from sklearn.compose import ColumnTransformer
 from sklearn.feature_extraction.text import CountVectorizer
 from tqdm import tqdm
 from catboost import CatBoostClassifier
+
 from data import Data
 from models.base_model import BaseModel
 from rank_bm25 import BM25Okapi
 from util import passthrough_func
-
 
 
 def simple_tokenizer(text):
@@ -38,7 +38,6 @@ class CatboostModel(BaseModel):
         self.feature_processing_pipeline = None
         self.use_bm25_features = params["use_bm25_features"]
         self.use_abstract_vectorizer = params["use_abstract_vectorizer"]
-
 
     def compute_bm25_score_(self, query_tokens, doc_tokens):
         """
@@ -128,9 +127,7 @@ dictionaries to rows in a dataframe
         df["abstract"] = df["abstract"].fillna("") ## Handle target papers' abstracts are "None"
         X = df[[col for col in df.columns if col != "label"]]
         y = df["label"]
-        return X, y
-        
-
+        return X, y        
 
     def preprocess_data_(self, X):
         """
