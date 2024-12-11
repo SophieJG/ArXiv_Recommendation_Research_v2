@@ -224,4 +224,3 @@ Run inference on a fold
             # Load BM25 model, author indices, and corpus documents
             with open(os.path.join(path, "bm25_model.pkl"), "rb") as f:
                 self.bm25_model = joblib.load(f)
-                
