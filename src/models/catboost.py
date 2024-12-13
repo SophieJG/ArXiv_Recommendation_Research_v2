@@ -174,8 +174,8 @@ Preprocesses the data by adding BM25 features and transforming features using th
             ("author_s2FieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_s2FieldsOfStudy"),
         ]
 
-        # If not using BM25, and the user wants to use the abstract vectorizer, add a CountVectorizer on the abstract
-        if not self.use_bm25_features and self.use_abstract_vectorizer:
+        # If using abstract vectorizer, add a CountVectorizer on the abstract
+        if self.use_abstract_vectorizer:
             transformers.append(("abstract", CountVectorizer(), "abstract"))
 
         self.feature_processing_pipeline = ColumnTransformer(transformers)
