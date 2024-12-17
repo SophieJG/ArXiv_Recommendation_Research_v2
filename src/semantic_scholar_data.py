@@ -139,6 +139,7 @@ Arguments:
             if j["citingcorpusid"] is None or j["citedcorpusid"] is None:
                 continue
             if j["citedcorpusid"] in cited_ids:
+                # TODO: get additional citation info (ie number of citations)
                 cited_citing_pairs.append((int(j["citedcorpusid"]), int(j["citingcorpusid"])))
     return cited_citing_pairs
 
@@ -481,7 +482,7 @@ in the data config. Note that the paper ids used in this stage are Arxiv ids
                         kaggle_data.append(l)
                         break
     kaggle_data = pd.DataFrame(kaggle_data)
-    print(f"Filtering relevant years (year < {config["data"]["end_year"]}) & (year >= {config["data"]["start_year"]})")
+    print(f"Filtering relevant years (year < {config['data']['end_year']}) & (year >= {config['data']['start_year']})")
     kaggle_data['update_date'] = pd.to_datetime(kaggle_data['update_date'])
     kaggle_data['year_updated'] = kaggle_data['update_date'].dt.year
     kaggle_data = kaggle_data[(kaggle_data["year_updated"] < config["data"]["end_year"]) & (kaggle_data["year_updated"] >= config["data"]["start_year"])]
@@ -538,7 +539,7 @@ a random set of papers. See config["data"]["test_is_2020"]
 """
     print("\nGenerating train, validation and test folds")
     if os.path.exists(os.path.join(data_dir(config), "train.csv")):
-        print(f"{os.path.join(data_dir(config), "train.csv")} exists - Skipping")
+        print(f"{os.path.join(data_dir(config), 'train.csv')} exists - Skipping")
         return
     rng = np.random.default_rng(seed=42)
     print("Loading papers")
