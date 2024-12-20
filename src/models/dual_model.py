@@ -1,6 +1,7 @@
 import numpy as np
 from models.base_model import BaseModel
-from train_eval import get_model
+from models.catboost import CatboostModel
+from models.cocitation_logit import CocitationLogitModel
 
 
 class DualModel(BaseModel):
@@ -11,12 +12,24 @@ class DualModel(BaseModel):
         - samples are not mutated when calling inner models' predict_proba or predict_proba_ranking
         """
         self.model_info = params
-        self.model1 : BaseModel = get_model(params['model1']['name'])
-        self.model2 : BaseModel = get_model(params['model2']['name'])
+        self.model1 : BaseModel = self._get_model(params['model1'])
+        self.model2 : BaseModel = self._get_model(params['model2'])
         self.agg_method = params.get('agg_method', 'max')
         if self.agg_method not in ['mean', 'max']:
             raise ValueError("agg_method must be either 'mean' or 'max'")
         self.loaded = False # flag to indicate that models have been loaded, must be true before running inference
+
+    @staticmethod
+    def _get_model(model_info: dict) -> BaseModel:
+        def get_model_class(model_name: str) -> type:
+            return {
+                "catboost": CatboostModel,
+                "cocitation_logit": CocitationLogitModel,
+                "dual_model": DualModel,
+            }[model_name]
+
+        model_class = get_model_class(model_info['name'])
+        return model_class(model_info["params"])
 
     def _aggregate_predictions(self, pred1, pred2):
         if self.agg_method == 'mean':
@@ -37,6 +50,7 @@ class DualModel(BaseModel):
         - samples are not mutated when calling inner models' predict_proba
         """
         assert self.model1 is not None and self.model2 is not None
+        assert self.loaded == True
         pred1 = self.model1.predict_proba(samples)
         pred2 = self.model2.predict_proba(samples)
         return self._aggregate_predictions(pred1, pred2)

@@ -5,6 +5,11 @@ params:  # Additional model parameters
   model1: # Each model must have already been trained and saved in that base path
     name: "catboost"
     version: "0.0.0"
+    params:  # Additional model1 parameters
+      dummy: 0
   model2: # Each model must have already been trained and saved in that base path
     name: "cocitation_logit"
     version: "0.0.0"
+    params:  # Additional model2 parameters
+      tau: 5.0
+      theta: 0.4
