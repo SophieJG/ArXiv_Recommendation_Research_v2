@@ -34,6 +34,7 @@ def fetch_papers_data(paper_ids: list, output_dir: str, batch_size: int = 10):
             return None 
             
         # Extract expanded set of fields
+        # TODO: Alter this to be in matching format with papers.json
         return {
             "year": response.get("year"),
             "publicationdate": response.get("publicationDate"),

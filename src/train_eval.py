@@ -2,7 +2,8 @@ import json
 import numpy as np
 from data import Data
 from models.catboost import CatboostModel
-from models.cocitation_logit import CocitationLogitModel
+from models.cocitation_sigmoid import CocitationSigmoidModel
+from models.cocitation_logistic import CocitationLogistic
 from models.dual_model import DualModel
 from util import models_dir
 
@@ -14,7 +15,8 @@ def get_model(config):
     model_type = config["model"]["model"]
     match model_type:
         case "catboost": return CatboostModel(config["model"]["params"])
-        case "cocitation_logit": return CocitationLogitModel(config["model"]["params"])
+        case "cocitation_sigmoid": return CocitationSigmoidModel(config["model"]["params"])
+        case "cocitation_logistic": return CocitationLogistic(config["model"]["params"])
         case "dual_model": return DualModel(config["model"]["params"])
         case _:
             raise ValueError(f"Unknown model type: {model_type}")

@@ -1,7 +1,8 @@
 import numpy as np
 from models.base_model import BaseModel
 from models.catboost import CatboostModel
-from models.cocitation_logit import CocitationLogitModel
+from models.cocitation_sigmoid import CocitationSigmoidModel
+from models.cocitation_logistic import CocitationLogistic
 
 
 class DualModel(BaseModel):
@@ -24,7 +25,8 @@ class DualModel(BaseModel):
         def get_model_class(model_name: str) -> type:
             return {
                 "catboost": CatboostModel,
-                "cocitation_logit": CocitationLogitModel,
+                "cocitation_sigmoid": CocitationSigmoidModel,
+                "cocitation_logistic": CocitationLogistic,
                 "dual_model": DualModel,
             }[model_name]
 
