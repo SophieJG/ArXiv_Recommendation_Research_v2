@@ -11,11 +11,13 @@ from sklearn.metrics import average_precision_score, roc_auc_score, accuracy_sco
 
 def get_model(config):
     assert config["model"] is not None, "Model config is required"
-    return {
-        "catboost": CatboostModel(config["model"]["params"]),
-        "cocitation_logit": CocitationLogitModel(config["model"]["params"]),
-        "dual_model": DualModel(config["model"]["params"]),
-    }[config["model"]["model"]]
+    model_type = config["model"]["model"]
+    match model_type:
+        case "catboost": return CatboostModel(config["model"]["params"])
+        case "cocitation_logit": return CocitationLogitModel(config["model"]["params"])
+        case "dual_model": return DualModel(config["model"]["params"])
+        case _:
+            raise ValueError(f"Unknown model type: {model_type}")
 
 
 def train(
