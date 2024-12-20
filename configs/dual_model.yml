@@ -1,0 +1,10 @@
+model: "dual_model"  # Which model to train
+version: "0.0.0"  # Unused by DualModel in current implementation, rely on inner model versions
+params:  # Additional model parameters
+  agg_method: "max"  # How to aggregate the predictions of the two models. Options: "mean", "max"
+  model1: # Each model must have already been trained and saved in that base path
+    name: "catboost"
+    version: "0.0.0"
+  model2: # Each model must have already been trained and saved in that base path
+    name: "cocitation_logit"
+    version: "0.0.0"
