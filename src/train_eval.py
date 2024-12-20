@@ -2,6 +2,7 @@ import json
 import numpy as np
 from data import Data
 from models.catboost import CatboostModel
+from models.cocitation_logit import CocitationLogitModel
 from util import models_dir
 
 from sklearn.metrics import average_precision_score, roc_auc_score, accuracy_score
@@ -10,7 +11,8 @@ from sklearn.metrics import average_precision_score, roc_auc_score, accuracy_sco
 def get_model(config):
     assert config["model"] is not None, "Model config is required"
     return {
-        "catboost": CatboostModel(config["model"]["params"])
+        "catboost": CatboostModel(config["model"]["params"]),
+        "cocitation_logit": CocitationLogitModel(config["model"]["params"])
     }[config["model"]["model"]]
 
 

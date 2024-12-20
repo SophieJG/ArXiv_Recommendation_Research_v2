@@ -1,0 +1,13 @@
+model: "cocitation_logit"  # Which model to train
+version: "0.0.0"  # Should be used when changing parameters, preprocessing etc.
+params:  # Additional model parameters
+  tau: 5.0
+  theta: 0.4
+  # tau and theta are parameters of the logistic function used to model the probability of a citation.:
+  #   f(x) = 1 / (1 + exp(θ * (τ - x)))
+  # where:
+  # - θ (theta) is a parameter that controls the steepness of the curve.
+  # - τ (tau) is the threshold value.
+  # - x is the maximum number of cocitations between a paper and the author's papers
+  # If not provided, τ is set to 5 to match Kanakia et al. 2019 MAG paper
+  # If not provided, θ is set to 0.4 to match Kanakia et al. 2019 MAG paper
