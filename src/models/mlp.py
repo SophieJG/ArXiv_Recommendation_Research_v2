@@ -187,3 +187,5 @@ class MLPClassifier(BaseModel):
         
         # Load model weights
         self.model.load_state_dict(checkpoint['model_state_dict'])
+
+        
