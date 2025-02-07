@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from urllib.request import urlretrieve
 import requests
 
@@ -31,6 +32,9 @@ A utility function to download files from Semantic Scholar
         print(json.dumps(json.loads(response.text), indent=4))
     
     response = json.loads(response.text)
+    if "files" not in response:
+        print(json.dumps(response, indent=4))
+        return
     files = response["files"]
     output_dir = os.path.join(path, release, field)
     os.makedirs(output_dir, exist_ok=True)
@@ -48,5 +52,6 @@ A utility function to download files from Semantic Scholar
 
 if __name__ == '__main__':
     raise RuntimeError("Are you sure you want to run this? Data is already downloaded. See the global variable path and semantic_scholar_path in data configs")
-    for key in ["papers", "authors", "citations", "abstracts"]:
+    for key in ["papers", "authors", "citations", "abstracts", "embeddings-specter_v2"]:
         get_files(key)
+        time.sleep(1)
