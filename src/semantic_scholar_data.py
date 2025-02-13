@@ -120,6 +120,70 @@ from getting their general info this function provide us with the corpus ids for
     with open(output_path, 'w') as f:
         json.dump(papers, f, indent=4)
 
+def _process_references_inner(path: str, citing_ids: list):
+    """
+A helper function to process a single SemS citations chunk file. Should only be called through process_references
+return a list of pairs <cited id, citing id>. Citing id is in the set of `citing_ids`
+
+Arguments:
+    path: the file to load and process
+    citing_ids: a list paper corpus ids
+"""
+    # _process_references_inner could be called in parallel so it's important to copy the ids list to avoid locks
+    citing_ids = set([int(id) for id in citing_ids])
+    cited_citing_pairs = []
+    with gzip.open(path, "rt", encoding="UTF-8") as fin:
+        for l in fin:
+            j = json.loads(l)
+            if j["citingcorpusid"] is None or j["citedcorpusid"] is None:
+                continue
+            if j["citingcorpusid"] in citing_ids:
+                cited_citing_pairs.append((int(j["citedcorpusid"]), int(j["citingcorpusid"])))
+    return cited_citing_pairs
+
+def process_references(config: dict):
+    """
+    Using the list of corpus ids all the unified papers (author and Arxiv) we query the `citations` table to get corpus ids for all
+    referenced papers. This includes all referenced papers, disregarding publication year.
+    Once the unified papers are updated with references, the file saving unified papers without references is removed.
+    """
+    print("\nLoading Reference info from Semantic Scholar for all unified papers")
+
+    output_path = papers_path(config)
+    if os.path.exists(output_path):
+        print(f"All Papers with references exists at {output_path} - Skipping")
+        return
+    
+    # load the unified papers - the papers are still missing their references
+    unified_papers_path = os.path.join(tmp_data_dir(config), "unified_papers_no_refs.json")
+    unified_papers = json.load(open(unified_papers_path))
+    
+    paper_ids = [int(id) for id in unified_papers.keys()]
+
+    res = multi_file_query(
+        os.path.join(config["data"]["semantic_scholar_path"], "citations", "*.gz"),
+        _process_references_inner,
+        config["data"]["n_jobs"],
+        citing_ids=paper_ids
+    )
+
+    # multi_file_query returns a list of dicts. Merge it to a single dict. Note that a single paper can have references in multiple
+    # res files so the dictionaries needs to be "deep" merged
+    for cited_citing_pairs in tqdm(res, "merging files"):
+        for cited, citing in cited_citing_pairs:
+            # add references to the unified papers
+            if 'references' not in unified_papers[str(citing)]:
+                unified_papers[str(citing)]["references"] = [cited]
+            else:
+                unified_papers[str(citing)]["references"].append(cited)
+
+    print(f"Saving to {output_path}")
+    with open(output_path, 'w') as f:
+        json.dump(unified_papers, f, indent=4)
+
+    # NOTE: Is this a good idea to remove? It seems redundant to keep the unified papers without references
+    os.remove(unified_papers_path)
+
 
 def _process_citations_inner(path: str, cited_ids: list):
     """
@@ -355,7 +419,7 @@ def unify_papers(config: dict):
 This stage unifies all previous paper queries into a single table including all papers, citing papers ids and abstracts
 """
     print("\nUnifying paper data")
-    output_path = papers_path(config)
+    output_path = os.path.join(tmp_data_dir(config), "unified_papers_no_refs.json")
     if os.path.exists(output_path):
         print(f"{output_path} exists - Skipping")
         return
