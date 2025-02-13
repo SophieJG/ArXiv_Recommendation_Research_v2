@@ -15,7 +15,6 @@ from tqdm import tqdm
 from data import Data
 from models.base_model import BaseModel
 from concurrent.futures import ProcessPoolExecutor
-import threading
 
 
 class Specter2EmbeddingsTransformer(BaseEstimator, TransformerMixin):
@@ -74,6 +73,8 @@ class Specter2EmbeddingsTransformer(BaseEstimator, TransformerMixin):
             outputs = model(**inputs)
         embedding = torch.mean(outputs.last_hidden_state, dim=1).squeeze().cpu().numpy()
         return embedding
+    
+
 
     def get_params(self, deep=True):
         # Return the parameters to make it compatible with scikit-learn cloning
