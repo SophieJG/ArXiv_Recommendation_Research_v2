@@ -394,12 +394,16 @@ It should not be used after `unify_papers` was run
     citing_paper_info = json.load(open(os.path.join(tmp_data_dir(config), "citing_paper_info.json")))
     print("loading author_papers")
     author_papers = json.load(open(os.path.join(tmp_data_dir(config), "author_papers.json")))
+    print("loading embeddings")
+    embeddings = json.load(open(os.path.join(tmp_data_dir(config), "papers_embedding.json")))
 
     all_papers = {}
     print("merging citing_paper_info")
     all_papers.update(citing_paper_info)
     print("merging author_papers")
     all_papers.update(author_papers)
+    print("merging embeddings")
+    all_papers.update(embeddings)
     for paper_id, paper in tqdm(arxiv_papers.items(), "merging arxiv papers"):
         all_papers[paper_id] = paper
 
