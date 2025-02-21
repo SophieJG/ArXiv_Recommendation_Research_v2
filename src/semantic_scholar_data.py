@@ -323,7 +323,7 @@ If a paper cites several papers from Arxiv than it is included if it's valid for
     with open(output_path, 'w') as f:
         json.dump(arxiv_papers, f, indent=4)
 
-def _process_embedding_papers_inner(path: str, ids: list, id_type: str):
+def _process_embedding_papers_inner(path: str, cited_ids: list):
     """
 A helper function to process a single SemS papers chunk file. Should only be called through process_papers. Go
 over all papers in the file and returns the info of all papers with id in `ids`
@@ -333,28 +333,21 @@ Arguments:
     ids: a list of strings/integers specifying which papers to load
     id_type: either CorpusId or ArXiv
 """
-    assert id_type in ["CorpusId", "ArXiv"]
     # _load_papers_inner could be called in parallel so it's important to copy the inputs to avoid locks
-    ids = set([str(id) for id in ids])
+    ids = set([str(id) for id in cited_ids])
     id_type = copy.deepcopy(id_type)
-    papers = {}
+    paper_embeddings = {}
     with gzip.open(path, "rt", encoding="UTF-8") as fin:
         for l in fin:
             j = json.loads(l)
-            if j["externalids"][id_type] not in ids:
+            if j["corpusid"] not in ids:
                 # If the paper id is not in the set of required ids - ignore the paper
                 continue
-            processed_paper = _process_paper_data(j, allow_none_year=False)
-            if processed_paper is None:
-                continue
-            if id_type == "ArXiv":
-                # Add arxiv_id if the paper is from Arxiv
-                processed_paper["arxiv_id"] = j["externalids"]["ArXiv"]
-            papers[j["corpusid"]] = processed_paper
-    return papers
+            paper_embeddings[j["corpusid"]] = j["vector"]
+    return paper_embeddings
 
 def process_embedding(config: dict):
-        """
+    """
 Using the list of corpus ids of the Arxiv papers we query the `embedding` table to get spector2 embedding for each paper. 
 This includes all papers, disregarding publication year
 """
@@ -378,14 +371,13 @@ This includes all papers, disregarding publication year
 
     # multi_file_query returns a list of dicts. Merge it to a single dict. Note that a single paper can have citations in multiple
     # res files so the dictionaries needs to be "deep" merged
-    citing_papers = defaultdict(lambda: [])
-    for cited_citing_pairs in tqdm(res, "merging files"):
-        for cited, citing in cited_citing_pairs:
-            citing_papers[cited].append(citing)
+    embedding_papers = {}
+    for d in tqdm(res, "merging files"):
+        embedding_papers.update(d)
 
-    print(f"Saving to {citing_papers_path}")
-    with open(citing_papers_path, 'w') as f:
-        json.dump(citing_papers, f, indent=4)
+    print(f"Saving to {embedding_papers_path}")
+    with open(embedding_papers_path, 'w') as f:
+        json.dump(embedding_papers, f, indent=4)
 
 
 
