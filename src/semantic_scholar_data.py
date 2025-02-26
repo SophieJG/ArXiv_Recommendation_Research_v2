@@ -150,6 +150,8 @@ This includes all papers, disregarding publication year
 """
     print("\nLoading embedding info from Semantic Scholar")
 
+    all_papers = json.load(open(papers_path(config)))
+
     embedding_papers_path = os.path.join(tmp_data_dir(config), "papers_embedding.json")
     if os.path.exists(embedding_papers_path):
         print(f"{embedding_papers_path} exists - Skipping")
@@ -166,17 +168,18 @@ This includes all papers, disregarding publication year
         ids=arxiv_papers
     )
 
-    print(res)
-
     # multi_file_query returns a list of dicts. Merge it to a single dict. Note that a single paper can have citations in multiple
     # res files so the dictionaries needs to be "deep" merged
     embedding_papers = {}
     for d in tqdm(res, "merging embedding files"):
-        embedding_papers.update(d)
+        for paper_id, embedding in d.items():
+            all_papers[str(paper_id)]["spectorv2_embedding"] = embedding
 
-    print(f"Saving to {embedding_papers_path}")
-    with open(embedding_papers_path, 'w') as f:
-        json.dump(embedding_papers, f, indent=4)
+    
+
+    print(f"Saving to {papers_path(config)}")
+    with open(papers_path(config), 'w') as f:
+        json.dump(all_papers, f, indent=4)
 
 
 
