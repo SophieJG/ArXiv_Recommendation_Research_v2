@@ -140,7 +140,6 @@ Arguments:
                 # If the paper id is not in the set of required ids - ignore the paper
                 continue
             paper_embeddings[j["corpusid"]] = j["vector"]
-            print(paper_embeddings)
     return paper_embeddings
 
 def process_embedding(config: dict):
@@ -536,16 +535,49 @@ result from errors in Semantic Scholar's name disambiguation logic
     for author, ps in author_papers.items():
         ps = set(ps)
         if len(ps) < config["data"]["max_author_papers"]:
-            valid_authors[author] = list(ps)
+            valid_authors[author] = {"papers": list(ps)}
             valid_paper_ids.union(ps)
-    print(f"valid authors: {len(valid_authors)} / {len(author_papers)}")
+    print(f"valid authors: {len(valid_authors)} / {len(author_papers)}") #TODO: update handles for later author processing
     print(f"valid papers: {len(valid_paper_ids)} / {len(papers)}")
-    valid_papers = {id: papers[id] for id in valid_paper_ids}
+    valid_papers = {id: {"papers":papers[id]} for id in valid_paper_ids}
+
+    # Need to add author embedding to the valid author file 
+    # Right now, we are randomly selecting one paper from the author as their embedding
+    valid_authors = get_author_embeddings(valid_authors, config)
+
 
     for path, data in zip([authors_output_path, author_papers_path], [valid_authors, valid_papers]):
         print(f"Saving to {path}")
         with open(path, 'w') as f:
             json.dump(data, f, indent=4)
+
+def get_author_embeddings(author_info: dict, config: dict):
+    print("\nLoading author embeddings from Semantic Scholar")
+
+    embeddings_path = os.path.join(config["data"]["semantic_scholar_path"], "embeddings-specter_v2", "*.gz")
+
+    author_papers_id = {}
+    for author in author_info:
+        author_papers_id[author_info[author]["papers"][0]] = author
+    
+    paper_ids = set(author_papers_id.keys())
+
+    paper_embeddings = {}
+    with gzip.open(embeddings_path, "rt", encoding="UTF-8") as fin:
+        for l in fin:
+            j = json.loads(l)
+            if j["corpusid"] not in paper_ids:
+                # If the paper id is not in the set of required ids - ignore the paper
+                continue
+            paper_embeddings[j["corpusid"]] = j["vector"]
+    
+    for paper_id, embedding in paper_embeddings.items():    
+        author_id = author_papers_id[paper_id]
+        author_info[author_id]["embedding"] = embedding
+
+    return author_info
+    
+
 
 
 def _process_abstract_inner(path: str, paper_ids: list):
