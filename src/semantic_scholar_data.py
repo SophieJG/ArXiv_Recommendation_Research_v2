@@ -9,6 +9,7 @@ from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 from joblib import Parallel, delayed
 import copy
+import ast
 
 from util import authors_path, data_dir, kaggle_data_path, papers_path, tmp_data_dir
 
@@ -139,8 +140,7 @@ Arguments:
             if j["corpusid"] not in ids:
                 # If the paper id is not in the set of required ids - ignore the paper
                 continue
-            paper_embeddings[j["corpusid"]] = j["vector"]
-            print(paper_embeddings)
+            paper_embeddings[j["corpusid"]] = ast.literal_eval(j["vector"])
     return paper_embeddings
 
 def process_embedding(config: dict):
@@ -149,8 +149,6 @@ Using the list of corpus ids of the Arxiv papers we query the `embedding` table 
 This includes all papers, disregarding publication year
 """
     print("\nLoading embedding info from Semantic Scholar")
-
-    all_papers = json.load(open(papers_path(config)))
 
     embedding_papers_path = os.path.join(tmp_data_dir(config), "papers_embedding.json")
     if os.path.exists(embedding_papers_path):
@@ -172,14 +170,13 @@ This includes all papers, disregarding publication year
     # res files so the dictionaries needs to be "deep" merged
     embedding_papers = {}
     for d in tqdm(res, "merging embedding files"):
-        for paper_id, embedding in d.items():
-            all_papers[str(paper_id)]["spectorv2_embedding"] = embedding
+        embedding_papers.update(d)
 
     
 
-    print(f"Saving to {papers_path(config)}")
-    with open(papers_path(config), 'w') as f:
-        json.dump(all_papers, f, indent=4)
+    print(f"Saving to {embedding_papers_path}")
+    with open(embedding_papers_path, 'w') as f:
+        json.dump(embedding_papers, f, indent=4)
 
 
 
