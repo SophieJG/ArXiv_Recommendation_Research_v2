@@ -323,7 +323,7 @@ If a paper cites several papers from Arxiv than it is included if it's valid for
     with open(output_path, 'w') as f:
         json.dump(arxiv_papers, f, indent=4)
 
-def _process_embedding_papers_inner(path: str, cited_ids: list):
+def _process_embedding_papers_inner(path: str, ids: list):
     """
 A helper function to process a single SemS papers chunk file. Should only be called through process_papers. Go
 over all papers in the file and returns the info of all papers with id in `ids`
@@ -334,8 +334,7 @@ Arguments:
     id_type: either CorpusId or ArXiv
 """
     # _load_papers_inner could be called in parallel so it's important to copy the inputs to avoid locks
-    ids = set([str(id) for id in cited_ids])
-    id_type = copy.deepcopy(id_type)
+    ids = set([str(id) for id in ids])
     paper_embeddings = {}
     with gzip.open(path, "rt", encoding="UTF-8") as fin:
         for l in fin:
@@ -366,13 +365,13 @@ This includes all papers, disregarding publication year
         os.path.join(config["data"]["semantic_scholar_path"], "embeddings-specter_v2", "*.gz"),
         _process_embedding_papers_inner,
         config["data"]["n_jobs"],
-        cited_ids=arxiv_papers
+        ids=arxiv_papers
     )
 
     # multi_file_query returns a list of dicts. Merge it to a single dict. Note that a single paper can have citations in multiple
     # res files so the dictionaries needs to be "deep" merged
     embedding_papers = {}
-    for d in tqdm(res, "merging files"):
+    for d in tqdm(res, "merging embedding files"):
         embedding_papers.update(d)
 
     print(f"Saving to {embedding_papers_path}")
