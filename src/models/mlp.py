@@ -1,190 +1,200 @@
 import os
-import pandas as pd
 import numpy as np
+import pandas as pd
+import joblib
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from sklearn.compose import ColumnTransformer
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
+
 from data import Data
 from models.base_model import BaseModel
-from models.spector_embed import Specter2EmbeddingsTransformer
-from util import *
+from util import passthrough_func
 
-def passthrough_func(x):
-    return x
 
-class MLPModel(nn.Module):
-    def __init__(self, input_size, hidden_size=128, output_size=1):
-        super(MLPModel, self).__init__()
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size // 2)
-        self.fc3 = nn.Linear(hidden_size // 2, output_size)
-        self.relu = nn.ReLU()
-        self.sigmoid = nn.Sigmoid()
-
+class MLPNetwork(nn.Module):
+    def __init__(self, input_size, hidden_sizes):
+        super().__init__()
+        layers = []
+        prev_size = input_size
+        
+        for hidden_size in hidden_sizes:
+            layers.extend([
+                nn.Linear(prev_size, hidden_size),
+                nn.ReLU()
+            ])
+            prev_size = hidden_size
+            
+        layers.append(nn.Linear(prev_size, 1))
+        layers.append(nn.Sigmoid())
+        
+        self.model = nn.Sequential(*layers)
+        
     def forward(self, x):
-        x = self.relu(self.fc1(x))
-        x = self.relu(self.fc2(x))
-        x = self.sigmoid(self.fc3(x))
-        return x
+        return self.model(x)
 
-class MLPClassifier(BaseModel):
+
+class MLPModel(BaseModel):
     def __init__(self, params: dict) -> None:
         self.model = None
         self.feature_processing_pipeline = None
-        self.input_size = None  # To be dynamically set during training
-        self.params = params
+        self.scaler = StandardScaler()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # Default MLP parameters if not specified
+        self.mlp_params = {
+            'hidden_sizes': (128, 64),
+            'max_epochs': 100,
+            'batch_size': 32,
+            'learning_rate': 0.001,
+            'early_stopping_patience': 5,
+            **params
+        }
 
-        # Define the preprocessing pipeline
-        self.feature_processing_pipeline = ColumnTransformer([
-            # ('passthrough', 'passthrough', ["referenceCount", "author_num_papers", "is_cited"]),
-            # ("paper_categories", CountVectorizer(analyzer=passthrough_func), "categories"),
-            # ("title", CountVectorizer(), "title"),
-            # ("author_fieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_fieldsOfStudy"),
-            # ("author_s2FieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_s2FieldsOfStudy"),
-            ("abstract_embedding", Specter2EmbeddingsTransformer(), "abstract"),
-            ("author_paper_embedding", Specter2EmbeddingsTransformer(), "author_paper_abstract")
-        ])
+    @staticmethod
+    def _process_author(new_sample: dict, sample: dict):
+        new_sample["author_num_papers"] = len(sample["author"]["papers"])
+        new_sample["author_fieldsOfStudy"] = []
+        new_sample["author_s2fieldsofstudy"] = []
+        new_sample["author_title"] = ""
+        for p in sample["author"]["papers"]:
+            for key in ["s2fieldsofstudy"]:
+                if p[key] is not None:
+                    new_sample[f"author_{key}"] += p[key]
+            if p["title"] is not None:
+                new_sample["author_title"] += " " + p["title"]
+        return new_sample
 
+    @staticmethod
+    def _process_paper(new_sample: dict, sample: dict):
+        for key in ["title", "categories"]:
+            new_sample[key] = sample[key]
+        return new_sample
 
-    def load_fold(self, data: Data, fold: str):
-        """
-        Loads a fold and converts it to a pandas dataframe.
-        """
-        samples = data.get_fold(fold)
+    def _samples_to_dataframe(self, samples: list):
         new_samples = []
-        top_k = 1
-        for sample in tqdm(samples, "Converting samples to dataframe"):
-            new_sample = {key: sample[key] for key in ["label"]}
-            # new_sample = {key: sample[key] for key in ["title", "categories", "label"]}
-            new_sample["abstract"] = [sample["abstract"]]
-
-            # new_sample["author_num_papers"] = len(sample["author"]["papers"])
-            # new_sample["author_fieldsOfStudy"] = []
-            # new_sample["author_s2FieldsOfStudy"] = []
-            # new_sample["author_title"] = ""
-            new_sample["author_paper_abstract"] = []
-            for p in sample["author"]["papers"]:
-                if len(new_sample["author_paper_abstract"])<top_k:
-                    if p["abstract"]:
-                        new_sample["author_paper_abstract"].append(p["abstract"])
-                # for key in ["fieldsOfStudy", "s2FieldsOfStudy"]: #s2 field of study is always none empty
-                #     if p[key] is not None:
-                #         new_sample[f"author_{key}"] += p[key]
-                # if p["title"] is not None:
-                #     new_sample["author_title"] += " " + p["title"]
-            # print("*****length: ", len(new_sample["author_paper_abstract"]))
-            # new_sample["is_cited"] = int(sample["author"]["id"]) in sample["cited_authors"]
+        for sample in tqdm(samples, "MLP: samples -> dataframe"):
+            new_sample = {"label": sample["label"]}
+            self._process_paper(new_sample, sample)
+            self._process_author(new_sample, sample)
             new_samples.append(new_sample)
-        print("*****length of new_samples:", len(new_samples))
-        # print(new_samples)
         df = pd.DataFrame.from_records(new_samples)
         X = df[[col for col in df.columns if col != "label"]]
         y = df["label"]
         return X, y
-    
-    def get_data_transform(self, data: pd.DataFrame, fold, fit: bool):
-        # abstract_transformer = Specter2EmbeddingsTransformer()
 
-        # # Define the preprocessing pipeline
-        # self.feature_processing_pipeline = ColumnTransformer([
-        #     # ('passthrough', 'passthrough', ["referenceCount", "author_num_papers", "is_cited"]),
-        #     # ("paper_categories", CountVectorizer(analyzer=passthrough_func), "categories"),
-        #     # ("title", CountVectorizer(), "title"),
-        #     # ("author_fieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_fieldsOfStudy"),
-        #     # ("author_s2FieldsOfStudy", CountVectorizer(analyzer=passthrough_func), "author_s2FieldsOfStudy"),
-        #     ("abstract_embedding", abstract_transformer, "abstract"),
-        #     ("author_paper_embedding", abstract_transformer, "author_paper_abstract")
-        # ])
-        print("get_data params", fold, fit)
-        embed_file_path = os.path.join(data_dir(self.params), f"{fold}_embed.csv")
-        X, y = self.load_fold(data, fold)
-        if os.path.exists(embed_file_path):
-            print("Embedding already exist, reading existing file")
-            X_embed = pd.read_csv(embed_file_path)
-            if X_embed.shape[1] == X.shape[1]:
-                return X_embed.values, y
-            print("Existing embedding file shape does not match, re-embedding")
-        print("Transforming dataframe")
-        if fit:
-            X = self.feature_processing_pipeline.fit_transform(X)
-        else: 
-            X = self.feature_processing_pipeline.transform(X)
-        X_df = pd.DataFrame(X)
-        X_df.to_csv(embed_file_path, index=False)
-        print(f"Transformation Done, X_train saved to {embed_file_path}")
-        return X, y
-
-    def fit(self, data: Data):
-        """
-        1. Fit the preprocessing pipeline on the training data.
-        2. Train the MLP model.
-        """
-        X_train, y_train = self.get_data_transform(data, "train", True)
-
-        X_train = torch.tensor(X_train, dtype=torch.float32)
-        y_train = torch.tensor(y_train.values, dtype=torch.float32)
-        print("***** X train shape:", X_train.shape)
-        # Set input size based on transformed data
-        self.input_size = X_train.shape[1]
-
-        # Initialize the MLP model
-        self.model = MLPModel(input_size=self.input_size)
+    def fit(self, train_samples: list, validation_samples: list):
+        X_train, y_train = self._samples_to_dataframe(train_samples)
+        
+        # Create feature processing pipeline
+        self.feature_processing_pipeline = ColumnTransformer([
+            ('passthrough', 'passthrough', ["author_num_papers"]),
+            ("paper_categories", CountVectorizer(analyzer=passthrough_func), "categories"),
+            ("title", CountVectorizer(), "title"),
+            ("author_s2fieldsofstudy", CountVectorizer(analyzer=passthrough_func), "author_s2fieldsofstudy"),
+        ])
+        
+        # Transform training data
+        X_train = self.feature_processing_pipeline.fit_transform(X_train)
+        X_train = self.scaler.fit_transform(X_train.toarray())
+        
+        # Transform validation data
+        X_val, y_val = self._samples_to_dataframe(validation_samples)
+        X_val = self.feature_processing_pipeline.transform(X_val)
+        X_val = self.scaler.transform(X_val.toarray())
+        
+        # Convert to PyTorch tensors
+        X_train = torch.FloatTensor(X_train).to(self.device)
+        y_train = torch.FloatTensor(y_train.values).to(self.device)
+        X_val = torch.FloatTensor(X_val).to(self.device)
+        y_val = torch.FloatTensor(y_val.values).to(self.device)
+        
+        print("Training data size:", X_train.shape)
+        
+        # Initialize model
+        input_size = X_train.shape[1]
+        self.model = MLPNetwork(input_size, self.mlp_params['hidden_sizes']).to(self.device)
+        
+        # Training setup
         criterion = nn.BCELoss()
-        optimizer = optim.Adam(self.model.parameters(), lr=0.001)
-
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.mlp_params['learning_rate'])
+        
         # Training loop
-        epochs = 50
-        for epoch in range(epochs):
-            optimizer.zero_grad()
-            outputs = self.model(X_train)
-            loss = criterion(outputs.squeeze(), y_train)
-            loss.backward()
-            optimizer.step()
-            print(f'Epoch [{epoch + 1}/{epochs}], Loss: {loss.item():.4f}')
+        best_val_loss = float('inf')
+        patience_counter = 0
+        
+        for epoch in range(self.mlp_params['max_epochs']):
+            self.model.train()
+            for i in range(0, len(X_train), self.mlp_params['batch_size']):
+                batch_X = X_train[i:i + self.mlp_params['batch_size']]
+                batch_y = y_train[i:i + self.mlp_params['batch_size']]
+                
+                optimizer.zero_grad()
+                outputs = self.model(batch_X).squeeze()
+                loss = criterion(outputs, batch_y)
+                loss.backward()
+                optimizer.step()
+            
+            # Validation
+            self.model.eval()
+            with torch.no_grad():
+                val_outputs = self.model(X_val).squeeze()
+                val_loss = criterion(val_outputs, y_val)
+                
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                
+            if patience_counter >= self.mlp_params['early_stopping_patience']:
+                print(f"Early stopping at epoch {epoch}")
+                break
 
-    def predict_proba(self, data: Data, fold: str):
-        """
-        Run inference on a fold and return probabilities.
-        """
-        assert self.model is not None
-        X, _ = self.get_data_transform(data, fold, False)
-
-        # X = self.feature_processing_pipeline.transform(X)
-        X = torch.tensor(X, dtype=torch.float32)
+    def _predict_proba(self, X: pd.DataFrame):
+        X = self.feature_processing_pipeline.transform(X)
+        X = self.scaler.transform(X.toarray())
+        X = torch.FloatTensor(X).to(self.device)
+        
+        self.model.eval()
         with torch.no_grad():
-            outputs = self.model(X)
-        return outputs.squeeze().numpy()
+            probs = self.model(X).squeeze().cpu().numpy()
+        return probs
 
-    def save_(self, path: str):
-        """
-        Save only the trained model weights and necessary model info.
-        """
+    def predict_proba(self, samples: list):
         assert self.model is not None
-        torch.save({
-            'model_state_dict': self.model.state_dict(),
-            'input_size': self.input_size,  # Save input_size
-        }, os.path.join(path, "model.pth"))
-            # with open(os.path.join(path, "pipeline.pkl"), "wb") as f:
-            #     joblib.dump(self.feature_processing_pipeline, f, protocol=5)
+        X, _ = self._samples_to_dataframe(samples)
+        return self._predict_proba(X)
 
-    def load_(self, path: str):
-        """
-        Load the trained model and the input size.
-        """
+    def predict_proba_ranking(self, papers: list, authors: list):
+        assert self.model is not None
+        papers_df = pd.DataFrame.from_records([self._process_paper({}, p) for p in papers])
+        authors_df = pd.DataFrame.from_records([self._process_author({}, a) for a in authors])
+        X = pd.merge(authors_df, papers_df, how='cross')
+        utility = np.array(self._predict_proba(X)).reshape((len(authors), len(papers)))
+        return utility
+
+    def _save(self, path: str):
+        assert self.model is not None
+        torch.save(self.model.state_dict(), os.path.join(path, "model.pt"))
+        with open(os.path.join(path, "pipeline.pkl"), "wb") as f:
+            joblib.dump(self.feature_processing_pipeline, f, protocol=5)
+        with open(os.path.join(path, "scaler.pkl"), "wb") as f:
+            joblib.dump(self.scaler, f, protocol=5)
+
+    def _load(self, path: str):
         assert self.model is None
-        # Load the saved model state dict and input_size
-        checkpoint = torch.load(os.path.join(path, "model.pth"))
+        with open(os.path.join(path, "pipeline.pkl"), "rb") as f:
+            self.feature_processing_pipeline = joblib.load(f)
+        with open(os.path.join(path, "scaler.pkl"), "rb") as f:
+            self.scaler = joblib.load(f)
+            
+        # Need to initialize model with correct input size before loading weights
+        dummy_X, _ = self._samples_to_dataframe([])  # Empty list to get feature size
+        dummy_X = self.feature_processing_pipeline.transform(dummy_X)
+        input_size = dummy_X.shape[1]
         
-        # Retrieve input size
-        self.input_size = checkpoint['input_size']
-        
-        # Initialize the MLP model with the correct input size
-        self.model = MLPModel(input_size=self.input_size)
-        
-        # Load model weights
-        self.model.load_state_dict(checkpoint['model_state_dict'])
-
-        
+        self.model = MLPNetwork(input_size, self.mlp_params['hidden_sizes']).to(self.device)
+        self.model.load_state_dict(torch.load(os.path.join(path, "model.pt")))

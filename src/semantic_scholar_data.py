@@ -335,7 +335,7 @@ Arguments:
 """
     # _load_papers_inner could be called in parallel so it's important to copy the inputs to avoid locks
     ids = set([str(id) for id in cited_ids])
-    id_type = copy.deepcopy(id_type)
+    ids = copy.deepcopy(ids)
     paper_embeddings = {}
     with gzip.open(path, "rt", encoding="UTF-8") as fin:
         for l in fin:
