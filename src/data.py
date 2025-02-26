@@ -28,6 +28,8 @@ Main class used to store data for training and evaluation purpose. See the readm
 
     def _process_author(self, new_sample: dict, author_id: str, paper_year: int):
         author_papers = []
+        current_year = 0
+        author_embedding = None
         for id in self.authors[author_id]:
             # Filter the author's published papers by year
             if str(id) not in self.papers:
@@ -35,9 +37,12 @@ Main class used to store data for training and evaluation purpose. See the readm
             paper = self.papers[str(id)]
             if paper["year"] < paper_year:
                 author_papers.append(paper)
+                if paper["year"] > current_year:
+                    author_embedding = paper["spectorv2_embedding"]
         new_sample["author"] = {
             "id": author_id,
-            "papers": author_papers
+            "papers": author_papers,
+            "embedding": author_embedding
         }
         return new_sample
 

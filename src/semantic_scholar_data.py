@@ -543,7 +543,7 @@ result from errors in Semantic Scholar's name disambiguation logic
 
     # Need to add author embedding to the valid author file 
     # Right now, we are randomly selecting one paper from the author as their embedding
-    valid_authors = get_author_embeddings(valid_authors, config)
+    # valid_authors = get_author_embeddings(valid_authors, config)
 
 
     for path, data in zip([authors_output_path, author_papers_path], [valid_authors, valid_papers]):
@@ -557,6 +557,7 @@ def get_author_embeddings(author_info: dict, config: dict):
     embeddings_path = os.path.join(config["data"]["semantic_scholar_path"], "embeddings-specter_v2", "*.gz")
 
     author_papers_id = {}
+    #selecting the first paper from author as author embedding
     for author in author_info:
         author_papers_id[author_info[author]["papers"][0]] = author
     
