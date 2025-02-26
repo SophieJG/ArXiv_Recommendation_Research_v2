@@ -1,7 +1,7 @@
 arxiv_json_path: "/share/garg/arxiv_kaggle/arxiv-metadata-oai-snapshot.json"  # Path to the file downloaded from kaggle
 semantic_scholar_path: "/share/garg/semantic_scholar_Nov2024/2024-11-05"  # Path to the data downloaded from Semantic Scholar
 
-base_path: "/share/garg/arxiv_runs/tom_1k/"  # Path to store data and models
+base_path: "/share/garg/arxiv_runs/marco_1k/"  # Path to store data and models
 test_is_2020: True  # When this flag is set to true the test set is the year 2020, validation is 2019 and the rest is training. Otherwise the splits are random
 start_year: 2011  # papers included in datasets are all papers where year >= `start_year`
 end_year: 2021  # papers included in datasets are all papers where year < `end_year`
@@ -10,7 +10,7 @@ prepare_authors_data_batch_sizes: [100, 25, 5, 1]  # See src/data_queries.py:pre
 num_papers: 1000  # Number of papers to include in the dataset. Use 0 to include all papers
 num_negative: 50  # Number of negative samples for each paper
 max_author_papers: 500  # Drop authors with more publications than `max_author_papers`. We believe that these result from errors in Semantic Scholar's name disambiguation logic
-n_jobs: 8  # How many cores to use when querying data
+n_jobs: 40  # How many cores to use when querying data
 
 # Ranking params
 top_k: [1, 5, 10]  # Ks to consider for metrics which take top k. Note that the rankers only rank up to the largest k so this has an effect on ranking run time
