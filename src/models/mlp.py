@@ -68,25 +68,40 @@ class MLPModel(BaseModel):
         return new_sample
 
     @staticmethod
-    def _process_paper(new_sample: dict, sample: dict):
-        for key in ["title", "categories"]:
-            new_sample[key] = sample[key]
+    # def _process_paper(new_sample: dict, sample: dict):
+    #     # for key in ["title", "categories"]:
+    #     #     new_sample[key] = sample[key]
         return new_sample
 
     def _samples_to_dataframe(self, samples: list):
         new_samples = []
-        for sample in tqdm(samples, "MLP: samples -> dataframe"):
-            new_sample = {"label": sample["label"]}
+        paper_embeddings = []
+        author_embeddings = []
+        labels = []
+
+        for sample in tqdm(samples, desc="Processing Samples"):
+            # Store embeddings separately
+            paper_embeddings.append(sample["paper_embedding"])
+            author_embeddings.append(sample["author_embedding"])
+            labels.append(sample["label"])
+
+            # Create feature dict excluding embeddings
+            new_sample = {}
             self._process_paper(new_sample, sample)
             self._process_author(new_sample, sample)
             new_samples.append(new_sample)
+
+        # Convert non-embedding features into a Pandas DataFrame
         df = pd.DataFrame.from_records(new_samples)
-        X = df[[col for col in df.columns if col != "label"]]
-        y = df["label"]
-        return X, y
+
+        # Convert embeddings and labels to PyTorch tensors
+        paper_embeddings = torch.FloatTensor(paper_embeddings)
+        author_embeddings = torch.FloatTensor(author_embeddings)
+
+        return df, paper_embeddings, author_embeddings, labels
 
     def fit(self, train_samples: list, validation_samples: list):
-        X_train, y_train = self._samples_to_dataframe(train_samples)
+        X_train, paper_emb_train, author_emb_train, y_train = self._samples_to_dataframe(train_samples)
         
         # Create feature processing pipeline
         self.feature_processing_pipeline = ColumnTransformer([
@@ -96,20 +111,32 @@ class MLPModel(BaseModel):
             ("author_s2fieldsofstudy", CountVectorizer(analyzer=passthrough_func), "author_s2fieldsofstudy"),
         ])
         
-        # Transform training data
-        X_train = self.feature_processing_pipeline.fit_transform(X_train)
-        X_train = self.scaler.fit_transform(X_train.toarray())
+        # # Transform training data
+        X_train_sparse = self.feature_processing_pipeline.fit_transform(X_train)
+        X_train_sparse = self.scaler.fit_transform(X_train.toarray())
         
-        # Transform validation data
-        X_val, y_val = self._samples_to_dataframe(validation_samples)
-        X_val = self.feature_processing_pipeline.transform(X_val)
-        X_val = self.scaler.transform(X_val.toarray())
+        # # Transform validation data
+        X_val, paper_emb_val, author_emb_val, y_val = self._samples_to_dataframe(validation_samples)
+        X_val_sparse = self.feature_processing_pipeline.transform(X_val)
+        X_val_sparse = self.scaler.transform(X_val.toarray())
         
         # Convert to PyTorch tensors
-        X_train = torch.FloatTensor(X_train).to(self.device)
+        X_train_sparse = torch.FloatTensor(X_train).to(self.device)
         y_train = torch.FloatTensor(y_train.values).to(self.device)
-        X_val = torch.FloatTensor(X_val).to(self.device)
+        X_val_sparse = torch.FloatTensor(X_val).to(self.device)
         y_val = torch.FloatTensor(y_val.values).to(self.device)
+
+        paper_emb_train, author_emb_train = paper_emb_train.to(self.device), author_emb_train.to(self.device)
+        paper_emb_val, author_emb_val = paper_emb_val.to(self.device), author_emb_val.to(self.device)
+
+        # Concatenate embeddings
+        train_embeddings = torch.cat((paper_emb_train, author_emb_train), dim=1)
+        val_embeddings = torch.cat((paper_emb_val, author_emb_val), dim=1)
+
+        # Train with embddings only
+        X_train = train_embeddings
+        X_val = val_embeddings
+
         
         print("Training data size:", X_train.shape)
         

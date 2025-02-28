@@ -1,3 +1,4 @@
+import os
 import json
 import numpy as np
 from data import Data
@@ -5,7 +6,7 @@ from models.catboost import CatboostModel
 from models.cocitation_sigmoid import CocitationSigmoidModel
 from models.cocitation_logistic import CocitationLogistic
 from models.dual_model import DualModel
-from util import models_dir
+from util import models_dir, tmp_data_dir
 
 from sklearn.metrics import average_precision_score, roc_auc_score, accuracy_score
 
@@ -32,7 +33,16 @@ Train a model and store the trained model to disk
     data = Data(config)
     model = get_model(config)
     train_samples = data.get_fold("train")
+    # Save train samples to temp folder
+    train_samples_path = os.path.join(tmp_data_dir(config), "train_samples.json")
+    print(f"Saving train samples to {train_samples_path}")
+    with open(train_samples_path, 'w') as f:
+        json.dump(train_samples, f, indent=4)
     validation_samples = data.get_fold("validation")
+    validation_samples_path = os.path.join(tmp_data_dir(config), "validation_samples.json")
+    print(f"Saving validation samples to {validation_samples_path}")
+    with open(validation_samples_path, 'w') as f:
+        json.dump(validation_samples, f, indent=4)
     model.fit(train_samples, validation_samples)
     model.save(models_dir(config), config["model"]["model"], config["model"]["version"])
 
