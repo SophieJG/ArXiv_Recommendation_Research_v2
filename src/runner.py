@@ -5,7 +5,7 @@ import yaml
 from ranking import evaluate_ranker, generate_utility_predictions
 from paper_embedding import fit_paper_embedding, generate_paper_embeddings
 from semantic_scholar_data import process_papers, process_citations, process_citing_papers, process_authors, \
-    kaggle_json_to_parquet, generate_ranking_sample, generate_samples, unify_papers, get_abstracts, process_references, process_embedding
+    kaggle_json_to_parquet, generate_ranking_sample, generate_samples, unify_papers, get_abstracts, process_references, process_paper_embedding, process_author_embedding
 from train_eval import train, eval
 
 
@@ -38,22 +38,24 @@ def runner(config: dict):
         kaggle_json_to_parquet(config)
     if config["runner"]["data"]["process_papers"]:
         process_papers(config)
-    if config["runner"]["data"]["process_embedding"]:
-        process_embedding(config)
     if config["runner"]["data"]["process_citations"]:
         process_citations(config)
     if config["runner"]["data"]["process_citing_papers"]:
         process_citing_papers(config)
     if config["runner"]["data"]["process_authors"]:
         process_authors(config)
+    if config["runner"]["data"]["process_author_embedding"]:
+        process_author_embedding(config)
     if config["runner"]["data"]["get_abstracts"]:
         get_abstracts(config)
     if config["runner"]["data"]["unify_papers"]:
         unify_papers(config)
     if config["runner"]["data"]["process_references"]:
         process_references(config)
-    if config["runner"]["data"]["generate_samples"]:
-        generate_samples(config)
+    if config["runner"]["data"]["process_paper_embedding"]:
+        process_paper_embedding(config)
+    # if config["runner"]["data"]["generate_samples"]:
+    #     generate_samples(config)
         
 
     # if config["runner"]["paper_embedding"]["fit"]:

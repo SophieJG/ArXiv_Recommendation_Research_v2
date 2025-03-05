@@ -1,13 +1,14 @@
 data:
   kaggle_json_to_parquet: True  # Prerequisite: None
   process_papers: True  # Prerequisite: data/kaggle_json_to_parquet
-  process_embedding: True # Prerequisite: data/process_papers
   process_citations: True  # Prerequisite: data/process_papers
   process_citing_papers: True  # Prerequisite: data/process_citations
   process_authors: True  # Prerequisite: data/process_citing_papers
+  process_author_embedding: True  # Prerequisite: data/process_authors
   get_abstracts: True  # Prerequisite: data/process_citing_papers
   unify_papers: True  # Prerequisite: data/process_authors & data/get_abstracts
   process_references: True  # Prerequisite: data/unify_papers
+  process_paper_embedding: True # Prerequisite: data/process_references
   generate_samples: True  # Prerequisite: data/process_references
 paper_embedding:
   fit: True  # Prerequisite: data

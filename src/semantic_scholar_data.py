@@ -10,8 +10,9 @@ from sklearn.model_selection import train_test_split
 from joblib import Parallel, delayed
 import copy
 import ast
-
+import math
 from util import authors_path, data_dir, kaggle_data_path, papers_path, tmp_data_dir
+from models.spector_embed import Specter2Embedder
 
 
 def multi_file_query(
@@ -144,6 +145,54 @@ Arguments:
             paper_embeddings[str(j["corpusid"])] = ast.literal_eval(j["vector"])
     return paper_embeddings
 
+def _generate_paper_embeddings_inner(paper_id_abstract_dict: dict, n_jobs: int):
+    """
+    A helper function to generate embeddings for a single paper. Should only be called through process_paper_embedding.
+    Takes a paper ID and returns a dictionary with the paper ID and its generated embedding.
+
+    Arguments:
+        paper_id: string ID of the paper to generate embedding for
+        paper_info: dictionary containing paper information including abstracts
+    Returns:
+        Dictionary mapping paper ID to its embedding vector
+    """
+
+    def _generate_single_embedding(pid, abstract):
+        paper_embeddings = {}
+        try:
+            # Initialize embedder
+            embedder = Specter2Embedder()
+                
+            # Generate embedding
+            embedding = embedder.compute_embedding(abstract)
+            
+            # Store result
+            paper_embeddings[str(pid)] = embedding.tolist()
+            
+        except Exception as e:
+            print(f"Error generating embedding for paper {pid}: {str(e)}")
+            
+        return paper_embeddings
+
+    # Convert dictionary items to list and then chunk
+    chunk_size = math.ceil(len(paper_id_abstract_dict) / n_jobs)
+    items = list(paper_id_abstract_dict.items())
+    chunks = [dict(items[i:i + chunk_size]) for i in range(0, len(items), chunk_size)]
+
+    # Process chunks in parallel
+    results = Parallel(n_jobs=-1)(
+        delayed(_generate_single_embedding)(pid, abstract) 
+        for chunk in tqdm(chunks, desc="Generating embeddings") 
+        for pid, abstract in chunk.items()
+    )
+
+    # Merge results
+    final_embeddings = {}
+    for r in results:
+        final_embeddings.update(r)
+
+    return final_embeddings
+
 def process_paper_embedding(config: dict):
     """
     Using the list of corpus ids of the Arxiv papers we query the `embedding` table to get spector2 embedding for each paper.
@@ -171,20 +220,38 @@ def process_paper_embedding(config: dict):
     embedding_papers = {}
     for d in tqdm(res, "merging embedding files"):
         embedding_papers.update(d)
-    # print("embedding_papers:\n", embedding_papers)
-
-    print(f"Saving to {embedding_papers_path}")
-    with open(embedding_papers_path, 'w') as f:
-        json.dump(embedding_papers, f, indent=4)
+    # print("embedding_papers:\n", embedding_papers）
     
+    missing_paperid_abstract_dict = {}
+    missing_paper_count = 0
     print("paper embedding:\n", embedding_papers)
     for paper_id in paper_info.keys():
         paper_id = str(paper_id)  # Add quotes around the paper_id
         if paper_id in embedding_papers:
             paper_info[paper_id]["embedding"] = embedding_papers[paper_id]
         else:
-            paper_info[paper_id]["embedding"] = []
+            missing_paperid_abstract_dict[paper_id] = paper_info[paper_id]["abstract"]
+            missing_paper_count += 1
             print(f"paper_id {paper_id} not found in embedding_papers")
+
+    if missing_paper_count > 0:
+        print(f"Generating embeddings for {missing_paper_count} papers")
+        missing_paper_embeddings = _generate_paper_embeddings_inner(missing_paperid_abstract_dict, config["data"]["n_jobs"])
+        embedding_papers.update(missing_paper_embeddings)
+    
+    for paper_id in missing_paperid_abstract_dict.keys():
+        paper_id = str(paper_id)
+        if paper_id in embedding_papers:
+            paper_info[paper_id]["embedding"] = embedding_papers[paper_id]
+        else:
+            paper_info[paper_id]["embedding"] = []
+            print(f"paper_id {paper_id} not generated")
+
+    
+    print(f"Saving to {embedding_papers_path}")
+    with open(embedding_papers_path, 'w') as f:
+        json.dump(embedding_papers, f, indent=4)
+    
 
     print(f"Saving to {paper_info_path}")
     with open(paper_info_path, 'w') as f:
