@@ -9,9 +9,11 @@ from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 from joblib import Parallel, delayed
 import copy
-
+import ast
+import math
 from util import authors_path, data_dir, kaggle_data_path, papers_path, tmp_data_dir
-
+from models.spector_embed import Specter2Embedder
+from placeholder_embed import placeholder_embed
 
 def multi_file_query(
     files_path: str,
@@ -131,7 +133,8 @@ Arguments:
     id_type: either CorpusId or ArXiv
 """
     # _load_papers_inner could be called in parallel so it's important to copy the inputs to avoid locks
-    ids = set(ids)
+    # the corpus id in the embedding file is an integer
+    ids = set(int(id) for id in ids)
     paper_embeddings = {}
     with gzip.open(path, "rt", encoding="UTF-8") as fin:
         for l in fin:
@@ -139,26 +142,71 @@ Arguments:
             if j["corpusid"] not in ids:
                 # If the paper id is not in the set of required ids - ignore the paper
                 continue
-            paper_embeddings[j["corpusid"]] = j["vector"]
+            paper_embeddings[str(j["corpusid"])] = ast.literal_eval(j["vector"])
     return paper_embeddings
 
-def process_embedding(config: dict):
+def _generate_paper_embeddings_inner(paper_id_abstract_dict: dict, n_jobs: int):
     """
-Using the list of corpus ids of the Arxiv papers we query the `embedding` table to get spector2 embedding for each paper. 
-This includes all papers, disregarding publication year
-"""
+    A helper function to generate embeddings for a single paper. Should only be called through process_paper_embedding.
+    Takes a paper ID and returns a dictionary with the paper ID and its generated embedding.
+
+    Arguments:
+        paper_id: string ID of the paper to generate embedding for
+        paper_info: dictionary containing paper information including abstracts
+    Returns:
+        Dictionary mapping paper ID to its embedding vector
+    """
+
+    def _generate_single_embedding(pid, abstract):
+        paper_embeddings = {}
+        try:
+            # Initialize embedder
+            embedder = Specter2Embedder()
+                
+            # Generate embedding
+            embedding = embedder.compute_embedding(abstract)
+            print(type(embedding))
+            # Store result
+            paper_embeddings[str(pid)] = embedding.tolist()
+            
+        except Exception as e:
+            print(f"Error generating embedding for paper {pid}: {str(e)}")
+            
+        return paper_embeddings
+
+    # Convert dictionary items to list and then chunk
+    chunk_size = math.ceil(len(paper_id_abstract_dict) / n_jobs)
+    items = list(paper_id_abstract_dict.items())
+    chunks = [dict(items[i:i + chunk_size]) for i in range(0, len(items), chunk_size)]
+
+    # Process chunks in parallel
+    results = Parallel(n_jobs=-1)(
+        delayed(_generate_single_embedding)(pid, abstract) 
+        for chunk in tqdm(chunks, desc="Generating embeddings") 
+        for pid, abstract in chunk.items()
+    )
+
+    # Merge results
+    final_embeddings = {}
+    for r in results:
+        final_embeddings.update(r)
+
+    return final_embeddings
+
+def process_paper_embedding(config: dict):
+    """
+    Using the list of corpus ids of the Arxiv papers we query the `embedding` table to get spector2 embedding for each paper.
+    """
     print("\nLoading embedding info from Semantic Scholar")
-
-    all_papers = json.load(open(papers_path(config)))
-
     embedding_papers_path = os.path.join(tmp_data_dir(config), "papers_embedding.json")
     if os.path.exists(embedding_papers_path):
         print(f"{embedding_papers_path} exists - Skipping")
         return
-    
-    paper_info = json.load(open(os.path.join(tmp_data_dir(config), "paper_info.json")))
+
+    paper_info_path = os.path.join(data_dir(config), "papers.json")
+    paper_info = json.load(open(paper_info_path))
     # corpus ids for arxiv papers
-    arxiv_papers = [int(id) for id in paper_info.keys()]
+    arxiv_papers = [id for id in paper_info.keys()]
 
     res = multi_file_query(
         os.path.join(config["data"]["semantic_scholar_path"], "embeddings-specter_v2", "*.gz"),
@@ -171,15 +219,201 @@ This includes all papers, disregarding publication year
     # res files so the dictionaries needs to be "deep" merged
     embedding_papers = {}
     for d in tqdm(res, "merging embedding files"):
-        for paper_id, embedding in d.items():
-            all_papers[str(paper_id)]["spectorv2_embedding"] = embedding
+        embedding_papers.update(d)
+    # print("embedding_papers:\n", embedding_papers）
+    
+    missing_paperid_abstract_dict = {}
+    missing_paper_abstract_count = 0
+    # print("paper embedding:\n", embedding_papers)
+
+    abstract_needed_paper_ids = []
+
+    for paper_id in paper_info.keys():
+        paper_id = str(paper_id)  # Add quotes around the paper_id
+        if paper_id in embedding_papers:
+            paper_info[paper_id]["embedding"] = embedding_papers[paper_id]
+        else:
+            if "abstract" in paper_info[paper_id].keys():
+                missing_paperid_abstract_dict[paper_id] = paper_info[paper_id]["abstract"]
+                missing_paper_abstract_count += 1
+                print(f"paper_id {paper_id} not found in embedding_papers")
+            else:
+                abstract_needed_paper_ids.append(paper_id)
+    
+    # If paper abstract is not found in papers.json, we need to get the abstract from the abstracts table
+    dict_list = multi_file_query(
+            os.path.join(config["data"]["semantic_scholar_path"], "abstracts", "*.gz"),
+            _process_abstract_inner,
+            config["data"]["n_jobs"],
+            paper_ids=abstract_needed_paper_ids
+        )
+
+    for d in tqdm(dict_list, "merging files"):
+        missing_paperid_abstract_dict.update(d)
+    # If the abstract is not found in the abstract table, we need to enter a placeholder
+    for paper_id in abstract_needed_paper_ids:
+        if paper_id not in missing_paperid_abstract_dict:
+            print(f"paper_id {paper_id} has no abstract, replaced embedding with placeholder")
+            embedding_papers[paper_id] = placeholder_embed
+            # missing_paperid_abstract_dict[paper_id] = ["There was no abstract from this paper, So this is a placeholder."]
+
+
+    if missing_paper_abstract_count > 0:
+        print(f"Generating paper embeddings for {missing_paper_abstract_count} papers")
+        missing_paper_embeddings = _generate_paper_embeddings_inner(missing_paperid_abstract_dict, config["data"]["n_jobs"])
+        embedding_papers.update(missing_paper_embeddings)
+        # print("Generated missing_paper_embeddings:\n", missing_paper_embeddings)
+    
+    for paper_id in missing_paperid_abstract_dict.keys():
+        paper_id = str(paper_id)
+        if paper_id in embedding_papers:
+            paper_info[paper_id]["embedding"] = embedding_papers[paper_id]
+        else:
+            paper_info[paper_id]["embedding"] = []
+            print(f"paper_id {paper_id} not generated")
 
     
+    print(f"Saving to {embedding_papers_path}")
+    with open(embedding_papers_path, 'w') as f:
+        json.dump(embedding_papers, f, indent=4)
+    
 
-    print(f"Saving to {papers_path(config)}")
-    with open(papers_path(config), 'w') as f:
-        json.dump(all_papers, f, indent=4)
+    print(f"Saving to {paper_info_path}")
+    with open(paper_info_path, 'w') as f:
+        json.dump(paper_info, f, indent=4)
 
+
+
+def process_author_embedding(config: dict):
+    """
+    Using the author ids of the arxiv papers, we query the `embedding` table to get spector2 embedding for each paper. We select certain number of papers from the author to generate author embedding.
+    """
+    print("\nLoading author embedding info from Semantic Scholar")
+    author_embedding_path = os.path.join(tmp_data_dir(config), "author_embedding.json")
+    if os.path.exists(author_embedding_path):
+        print(f"{author_embedding_path} exists - Skipping")
+        return
+
+    paper_embedding_path = os.path.join(tmp_data_dir(config), "papers_embedding.json")
+    paper_embedding = json.load(open(paper_embedding_path))
+
+
+    author_info_path = os.path.join(data_dir(config), "authors.json")
+    author_info = json.load(open(author_info_path))
+    # corpus ids for arxiv papers
+    paper_to_author = defaultdict(list)
+    author_to_paper = {}
+
+    # a dictionary of author's first paper id to embeddings
+    author_embedding = {}
+    paper_ids = []
+    for author_id, author_paper_ids in author_info.items():
+        #author_id is a string
+        #paper_id is an int
+        if author_paper_ids["papers"][0] not in paper_embedding:
+            paper_id = str(author_paper_ids["papers"][0])
+            paper_ids.append(paper_id)
+            paper_to_author[paper_id].append(author_id)
+            author_to_paper[author_id] = paper_id
+        else:
+            # check if the author's first paper is in the paper_embedding
+            author_embedding[author_id] = paper_embedding[author_paper_ids["papers"][0]]
+    
+    # Get the embeddings for the author's paper
+    res = multi_file_query(
+        os.path.join(config["data"]["semantic_scholar_path"], "embeddings-specter_v2", "*.gz"),
+        _process_embedding_papers_inner,
+        config["data"]["n_jobs"],
+        ids=paper_ids
+    )
+
+    # a dictionary of author's first paper id to embeddings
+    author_embedding_paper_dict = {}
+    for d in tqdm(res, "merging embedding files"):
+        author_embedding_paper_dict.update(d)
+
+    #include the author's first paper embedding to the paper_embedding
+    paper_embedding.update(author_embedding_paper_dict)
+
+    missing_embedding_paper_ids = []
+    missing_embedding_count = 0
+    for paper_id in paper_ids:
+        if paper_id not in author_embedding_paper_dict:
+            print(f"paper_id {paper_id} has no embedding in the semantic scholar embedding table")
+            missing_embedding_paper_ids.append(paper_id)
+            missing_embedding_count += 1
+        else:
+            for author_id in paper_to_author[str(paper_id)]:
+                author_id = str(author_id)
+                author_embedding[author_id] = author_embedding_paper_dict[str(paper_id)]
+    
+    # If the author's paper embedding is not found in the author_embedding_paper_dict, we need to get the embedding from the abstract table and then generate
+    if missing_embedding_count > 0:
+        print(f"Generating embeddings for {missing_embedding_count} author papers")
+        print("Querying the abstract table for the missing embeddings")
+        dict_list = multi_file_query(
+            os.path.join(config["data"]["semantic_scholar_path"], "abstracts", "*.gz"),
+            _process_abstract_inner,
+            config["data"]["n_jobs"],
+            paper_ids=missing_embedding_paper_ids
+        )
+
+        # a dictionary of missing paper id to abstract
+        missing_paperid_abstract_dict = {}
+        for d in tqdm(dict_list, "merging files"):
+            missing_paperid_abstract_dict.update(d)
+        
+        abstract_files_path = os.path.join(tmp_data_dir(config), "abstracts.json")
+        old_abstracts = json.load(open(abstract_files_path))
+
+        new_abstracts = missing_paperid_abstract_dict.copy()  # Create a copy first
+        new_abstracts.update(old_abstracts)
+
+        # If the abstract is not found in the abstract table, we need to enter a placeholder as the embedding
+        for id in missing_embedding_paper_ids:
+            if id not in missing_paperid_abstract_dict:
+                print(f"paper_id {id} has no abstract, replaced embedding with placeholder")
+                new_abstracts[id] = ["There was no abstract from this paper, So this is a placeholder."]
+                author_embedding_paper_dict[str(id)] = placeholder_embed
+                paper_embedding[str(id)] = placeholder_embed
+        
+        print(f"Saving to {abstract_files_path}")
+        with open(abstract_files_path, 'w') as f:
+            json.dump(new_abstracts, f, indent=4)
+
+        # If there was no embedding found in the semantic scholar embedding table, we need to generate the embedding ourselves
+        print(f"Generating author paper embeddings for {missing_embedding_count} papers")
+        missing_paper_embeddings = _generate_paper_embeddings_inner(missing_paperid_abstract_dict, config["data"]["n_jobs"])
+        # print("missing_author_paper_embeddings:\n", missing_paper_embeddings)
+        author_embedding_paper_dict.update(missing_paper_embeddings)
+        paper_embedding.update(missing_paper_embeddings)
+
+    for paper_id in missing_embedding_paper_ids:
+        for author_id in paper_to_author[str(paper_id)]:
+            author_id = str(author_id)
+            author_embedding[author_id] = author_embedding_paper_dict[str(paper_id)]
+
+
+    print(f"Saving to {paper_embedding_path}")
+    with open(paper_embedding_path, 'w') as f:
+        json.dump(paper_embedding, f, indent=4)
+
+
+    print(f"Saving to {author_embedding_path}")
+    with open(author_embedding_path, 'w') as f:
+        json.dump(author_embedding, f, indent=4)
+    
+    for author_id in author_info.keys():
+        # paper_id = f'"{str(author_to_paper[author_id])}"'  # Add quotes around the paper_id
+        if author_id in author_embedding:
+            author_info[str(author_id)]["embedding"] = author_embedding[str(author_id)]
+        else:
+            author_info[str(author_id)]["embedding"] = []
+            print(f"author_id {author_id} not found in author_embedding")
+
+    print(f"Saving to {author_info_path}")
+    with open(author_info_path, 'w') as f:
+        json.dump(author_info, f, indent=4)
 
 
 def _process_references_inner(path: str, citing_ids: list):
@@ -398,16 +632,12 @@ It should not be used after `unify_papers` was run
     citing_paper_info = json.load(open(os.path.join(tmp_data_dir(config), "citing_paper_info.json")))
     print("loading author_papers")
     author_papers = json.load(open(os.path.join(tmp_data_dir(config), "author_papers.json")))
-    print("loading embeddings")
-    embeddings = json.load(open(os.path.join(tmp_data_dir(config), "papers_embedding.json")))
 
     all_papers = {}
     print("merging citing_paper_info")
     all_papers.update(citing_paper_info)
     print("merging author_papers")
     all_papers.update(author_papers)
-    print("merging embeddings")
-    all_papers.update(embeddings)
     for paper_id, paper in tqdm(arxiv_papers.items(), "merging arxiv papers"):
         all_papers[paper_id] = paper
 
@@ -454,7 +684,6 @@ This stage unifies all previous paper queries into a single table including all 
     print(f"Saving to {output_path}")
     with open(output_path, 'w') as f:
         json.dump(all_papers, f, indent=4)
-
 
 def _process_authors_inner(path: str, author_ids: list):
     """
@@ -539,47 +768,13 @@ result from errors in Semantic Scholar's name disambiguation logic
             valid_paper_ids.union(ps)
     print(f"valid authors: {len(valid_authors)} / {len(author_papers)}") #TODO: update handles for later author processing
     print(f"valid papers: {len(valid_paper_ids)} / {len(papers)}")
-    valid_papers = {id: {"papers":papers[id]} for id in valid_paper_ids}
-
-    # Need to add author embedding to the valid author file 
-    # Right now, we are randomly selecting one paper from the author as their embedding
-    # valid_authors = get_author_embeddings(valid_authors, config)
+    valid_papers = {id: {"papers":papers[str(id)]} for id in valid_paper_ids}
 
 
     for path, data in zip([authors_output_path, author_papers_path], [valid_authors, valid_papers]):
         print(f"Saving to {path}")
         with open(path, 'w') as f:
             json.dump(data, f, indent=4)
-
-def get_author_embeddings(author_info: dict, config: dict):
-    print("\nLoading author embeddings from Semantic Scholar")
-
-    embeddings_path = os.path.join(config["data"]["semantic_scholar_path"], "embeddings-specter_v2", "*.gz")
-
-    author_papers_id = {}
-    #selecting the first paper from author as author embedding
-    for author in author_info:
-        author_papers_id[author_info[author]["papers"][0]] = author
-    
-    paper_ids = set(author_papers_id.keys())
-
-    paper_embeddings = {}
-    with gzip.open(embeddings_path, "rt", encoding="UTF-8") as fin:
-        for l in fin:
-            j = json.loads(l)
-            if j["corpusid"] not in paper_ids:
-                # If the paper id is not in the set of required ids - ignore the paper
-                continue
-            paper_embeddings[j["corpusid"]] = j["vector"]
-    
-    for paper_id, embedding in paper_embeddings.items():    
-        author_id = author_papers_id[paper_id]
-        author_info[author_id]["embedding"] = embedding
-
-    return author_info
-    
-
-
 
 def _process_abstract_inner(path: str, paper_ids: list):
     paper_ids = set([int(id) for id in paper_ids])
@@ -617,6 +812,11 @@ We query the `abstracts` table to get the abstracts of all papers: Arxiv papers,
     abstracts = {}
     for d in tqdm(dict_list, "merging files"):
         abstracts.update(d)
+    
+    for paper_id in paper_ids:
+        if paper_id not in abstracts:
+            print(f"Paper {paper_id} has no abstract")
+            abstracts[paper_id] = "There was no abstract from this paper, So this is a placeholder."
 
     print(f"Saving to {output_path}")
     with open(output_path, 'w') as f:

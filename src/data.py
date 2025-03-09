@@ -4,6 +4,7 @@ import os
 import pandas as pd
 from tqdm import tqdm
 from util import data_dir, kaggle_data_path, authors_path, papers_path
+import sys
 
 
 class Data:
@@ -29,34 +30,39 @@ Main class used to store data for training and evaluation purpose. See the readm
     def _process_author(self, new_sample: dict, author_id: str, paper_year: int):
         author_papers = []
         current_year = 0
-        author_embedding = None
-        for id in self.authors[author_id]:
-            # Filter the author's published papers by year
-            if str(id) not in self.papers:
-                continue
-            paper = self.papers[str(id)]
-            if paper["year"] < paper_year:
-                author_papers.append(paper)
-                if paper["year"] > current_year:
-                    author_embedding = paper["spectorv2_embedding"]
+        # for id in self.authors[author_id]["papers"]:
+        #     # Filter the author's published papers by year
+        #     if str(id) not in self.papers:
+        #         continue
+        #     paper = self.papers[str(id)]
+        #     if paper["year"] < paper_year:
+        #         author_papers.append(paper)
+        
+        author_embedding = self.authors[author_id]["embedding"]
+        if author_embedding is None or author_embedding == [] or author_embedding == "":
+            print(f"author_embedding is None for author {author_id}")
+            
         new_sample["author"] = {
             "id": author_id,
-            "papers": author_papers,
+        #     "papers": author_papers,
             "embedding": author_embedding
         }
+        # print(new_sample)
         return new_sample
 
     def _process_paper(self, new_sample: dict, paper_id: str):
         kaggle_paper_data = self.kaggle_data.loc[str(self.papers[paper_id]["arxiv_id"])]
         # copy all fields from Semantic Scholar except `year` and `citing_authors`
-        for key, value in self.papers[paper_id].items():
-            if key in ["year", "citing_authors"]:
-                continue
-            new_sample[key] = value
+        # for key, value in self.papers[paper_id].items():
+        #     if key in ["year", "citing_authors"]:
+        #         continue
+        #     new_sample[key] = value
         # title, categories and year are taken from the kaggle dataset
         new_sample["title"] = kaggle_paper_data["title"]
-        new_sample["categories"] = list(kaggle_paper_data["categories"])
-        new_sample["year"] = kaggle_paper_data["year_updated"]
+        # new_sample["categories"] = list(kaggle_paper_data["categories"])
+        new_sample["year"] = int(kaggle_paper_data["year_updated"])
+
+        new_sample["embedding"] = self.papers[paper_id]["embedding"]
         return new_sample
 
     def _parse_fold(self, fold_str: str):
