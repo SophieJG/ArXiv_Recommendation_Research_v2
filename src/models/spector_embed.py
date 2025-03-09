@@ -1,22 +1,27 @@
 import os
 import torch
 import torch.nn as nn
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoModel
 from adapters import AutoAdapterModel
 import numpy as np
-
+from huggingface_hub import login
 
 class Specter2Embedder:
     def __init__(self, model_name="allenai/specter2_base", adapter_name="allenai/specter2", device=None):
+        login(token = os.getenv("HUGGINGFACE_TOKEN"))
         self.model_name = model_name
         self.adapter_name = adapter_name
         self.max_length = 512
         self.device = device if device else ('cuda' if torch.cuda.is_available() else 'cpu')
         
         # Initialize tokenizer and model
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoAdapterModel.from_pretrained(model_name)
-        self.model.load_adapter(adapter_name, set_active=True)
+        self.tokenizer = AutoTokenizer.from_pretrained('allenai/specter2_base')
+
+        #load base model
+        self.model = AutoAdapterModel.from_pretrained('allenai/specter_plus_plus')
+
+        #load the adapter(s) as per the required task, provide an identifier for the adapter in load_as argument and activate it
+        self.model.load_adapter("allenai/specter2", source="hf", load_as="specter2", set_active=True)
         self.model.to(self.device)
         self.model.eval()
 

@@ -8,6 +8,8 @@ from sklearn.compose import ColumnTransformer
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
+from datetime import datetime
+import json
 
 from data import Data
 from models.base_model import BaseModel
@@ -42,6 +44,7 @@ class MLPModel(BaseModel):
         self.feature_processing_pipeline = None
         self.scaler = StandardScaler()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.input_size = None
         
         # Default MLP parameters if not specified
         self.mlp_params = {
@@ -55,22 +58,24 @@ class MLPModel(BaseModel):
 
     @staticmethod
     def _process_author(new_sample: dict, sample: dict):
-        new_sample["author_num_papers"] = len(sample["author"]["papers"])
-        new_sample["author_fieldsOfStudy"] = []
-        new_sample["author_s2fieldsofstudy"] = []
-        new_sample["author_title"] = ""
-        for p in sample["author"]["papers"]:
-            for key in ["s2fieldsofstudy"]:
-                if p[key] is not None:
-                    new_sample[f"author_{key}"] += p[key]
-            if p["title"] is not None:
-                new_sample["author_title"] += " " + p["title"]
+        # new_sample["author_num_papers"] = len(sample["author"]["papers"])
+        # new_sample["author_fieldsOfStudy"] = []
+        # new_sample["author_s2fieldsofstudy"] = []
+        # new_sample["author_title"] = ""
+        # for p in sample["author"]["papers"]:
+        #     for key in ["s2fieldsofstudy"]:
+        #         if p[key] is not None:
+        #             new_sample[f"author_{key}"] += p[key]
+        #     if p["title"] is not None:
+        #         new_sample["author_title"] += " " + p["title"]
+        new_sample["author_embedding"] = sample["author"]["embedding"]
         return new_sample
 
     @staticmethod
-    # def _process_paper(new_sample: dict, sample: dict):
-    #     # for key in ["title", "categories"]:
-    #     #     new_sample[key] = sample[key]
+    def _process_paper(new_sample: dict, sample: dict):
+        # for key in ["title", "categories"]:
+        #     new_sample[key] = sample[key]
+        new_sample["paper_embedding"] = sample["embedding"]
         return new_sample
 
     def _samples_to_dataframe(self, samples: list):
@@ -81,8 +86,8 @@ class MLPModel(BaseModel):
 
         for sample in tqdm(samples, desc="Processing Samples"):
             # Store embeddings separately
-            paper_embeddings.append(sample["paper_embedding"])
-            author_embeddings.append(sample["author_embedding"])
+            # paper_embeddings.append(sample["embedding"])
+            # author_embeddings.append(sample["author"]["embedding"])
             labels.append(sample["label"])
 
             # Create feature dict excluding embeddings
@@ -94,15 +99,18 @@ class MLPModel(BaseModel):
         # Convert non-embedding features into a Pandas DataFrame
         df = pd.DataFrame.from_records(new_samples)
 
-        # Convert embeddings and labels to PyTorch tensors
-        paper_embeddings = torch.FloatTensor(paper_embeddings)
-        author_embeddings = torch.FloatTensor(author_embeddings)
+        # # Convert embeddings and labels to PyTorch tensors
+        # paper_embeddings = torch.FloatTensor(paper_embeddings)
+        # author_embeddings = torch.FloatTensor(author_embeddings)
+        
+        # embeddings = torch.cat((paper_embeddings, author_embeddings), dim=1).to(self.device)
 
-        return df, paper_embeddings, author_embeddings, labels
+        return df, labels
 
     def fit(self, train_samples: list, validation_samples: list):
-        X_train, paper_emb_train, author_emb_train, y_train = self._samples_to_dataframe(train_samples)
-        
+        X_train, y_train = self._samples_to_dataframe(train_samples)
+        print("X_train:", X_train.head())
+        X_train = torch.FloatTensor(X_train.to_numpy()).to(self.device)
         # Create feature processing pipeline
         self.feature_processing_pipeline = ColumnTransformer([
             ('passthrough', 'passthrough', ["author_num_papers"]),
@@ -112,37 +120,36 @@ class MLPModel(BaseModel):
         ])
         
         # # Transform training data
-        X_train_sparse = self.feature_processing_pipeline.fit_transform(X_train)
-        X_train_sparse = self.scaler.fit_transform(X_train.toarray())
+        # X_train_sparse = self.feature_processing_pipeline.fit_transform(X_train)
+        # X_train_sparse = self.scaler.fit_transform(X_train.toarray())
         
         # # Transform validation data
-        X_val, paper_emb_val, author_emb_val, y_val = self._samples_to_dataframe(validation_samples)
-        X_val_sparse = self.feature_processing_pipeline.transform(X_val)
-        X_val_sparse = self.scaler.transform(X_val.toarray())
+        X_val, y_val = self._samples_to_dataframe(validation_samples)
+        X_val = torch.FloatTensor(X_val.to_numpy()).to(self.device)
+        # X_val_sparse = self.feature_processing_pipeline.transform(X_val)
+        # X_val_sparse = self.scaler.transform(X_val.toarray())
         
         # Convert to PyTorch tensors
-        X_train_sparse = torch.FloatTensor(X_train).to(self.device)
-        y_train = torch.FloatTensor(y_train.values).to(self.device)
-        X_val_sparse = torch.FloatTensor(X_val).to(self.device)
-        y_val = torch.FloatTensor(y_val.values).to(self.device)
-
-        paper_emb_train, author_emb_train = paper_emb_train.to(self.device), author_emb_train.to(self.device)
-        paper_emb_val, author_emb_val = paper_emb_val.to(self.device), author_emb_val.to(self.device)
-
-        # Concatenate embeddings
-        train_embeddings = torch.cat((paper_emb_train, author_emb_train), dim=1)
-        val_embeddings = torch.cat((paper_emb_val, author_emb_val), dim=1)
+        # X_train_sparse = torch.FloatTensor(X_train).to(self.device)
+        y_train = torch.FloatTensor(y_train).to(self.device)
+        # X_val_sparse = torch.FloatTensor(X_val).to(self.device)
+        y_val = torch.FloatTensor(y_val).to(self.device)
 
         # Train with embddings only
-        X_train = train_embeddings
-        X_val = val_embeddings
+        # X_train = train_embeddings
+        # X_val = val_embeddings
+
+        print("X_train:", X_train)
+        print("X_val:", X_val)
+        print("y_train:", y_train)
+        print("y_val:", y_val)
 
         
         print("Training data size:", X_train.shape)
         
         # Initialize model
-        input_size = X_train.shape[1]
-        self.model = MLPNetwork(input_size, self.mlp_params['hidden_sizes']).to(self.device)
+        self.input_size = X_train.shape[1]
+        self.model = MLPNetwork(self.input_size, self.mlp_params['hidden_sizes']).to(self.device)
         
         # Training setup
         criterion = nn.BCELoss()
@@ -181,8 +188,8 @@ class MLPModel(BaseModel):
                 break
 
     def _predict_proba(self, X: pd.DataFrame):
-        X = self.feature_processing_pipeline.transform(X)
-        X = self.scaler.transform(X.toarray())
+        # X = self.feature_processing_pipeline.transform(X)
+        # X = self.scaler.transform(X.toarray())
         X = torch.FloatTensor(X).to(self.device)
         
         self.model.eval()
@@ -205,23 +212,87 @@ class MLPModel(BaseModel):
 
     def _save(self, path: str):
         assert self.model is not None
-        torch.save(self.model.state_dict(), os.path.join(path, "model.pt"))
-        with open(os.path.join(path, "pipeline.pkl"), "wb") as f:
-            joblib.dump(self.feature_processing_pipeline, f, protocol=5)
-        with open(os.path.join(path, "scaler.pkl"), "wb") as f:
-            joblib.dump(self.scaler, f, protocol=5)
+        os.makedirs(path, exist_ok=True)
+    
+        # Save PyTorch model with metadata
+        checkpoint = {
+            'model_state_dict': self.model.state_dict(),
+            'model_config': self.mlp_params,  # Save model configuration
+            'input_size': self.input_size,
+            'version': '1.0',  # Version tracking
+        }
+        torch.save(checkpoint, os.path.join(path, "model.pt"))
+        
+        # Save preprocessing components
+        try:
+            joblib.dump(self.feature_processing_pipeline, 
+                    os.path.join(path, "pipeline.pkl"), protocol=5)
+            joblib.dump(self.scaler, 
+                    os.path.join(path, "scaler.pkl"), protocol=5)
+        except Exception as e:
+            print(f"Error saving preprocessing components: {e}")
+            
+        # Optionally save a metadata file
+        with open(os.path.join(path, "metadata.json"), "w") as f:
+            json.dump({
+                "date_saved": str(datetime.now()),
+                "model_type": "MLP",
+                # Any other metadata
+            }, f)
+        # torch.save(self.model.state_dict(), os.path.join(path, "model.pt"))
+        # with open(os.path.join(path, "pipeline.pkl"), "wb") as f:
+        #     joblib.dump(self.feature_processing_pipeline, f, protocol=5)
+        # with open(os.path.join(path, "scaler.pkl"), "wb") as f:
+        #     joblib.dump(self.scaler, f, protocol=5)
 
     def _load(self, path: str):
         assert self.model is None
+
+        try:
+            # Load PyTorch model and metadata
+            checkpoint = torch.load(os.path.join(path, "model.pt"))
+            
+            # Initialize model with saved config if needed
+            input_size = checkpoint.get('input_size')
+            model_config = checkpoint.get('model_config')
+            if self.model is None and input_size is not None:
+                self.model = MLPNetwork(input_size, model_config['hidden_sizes']).to(self.device)
+            
+            # Load model state
+            self.model.load_state_dict(checkpoint['model_state_dict'])
+            self.model.eval()  # Set to evaluation mode
+            
+            # Load preprocessing components
+            try:
+                self.feature_processing_pipeline = joblib.load(
+                    os.path.join(path, "pipeline.pkl"))
+                self.scaler = joblib.load(
+                    os.path.join(path, "scaler.pkl"))
+            except Exception as e:
+                print(f"Error loading preprocessing components: {e}")
+            
+            # Optionally load and verify metadata
+            try:
+                with open(os.path.join(path, "metadata.json"), "r") as f:
+                    self.metadata = json.load(f)
+                    print(f"Model saved on: {self.metadata['date_saved']}")
+                    print(f"Model type: {self.metadata['model_type']}")
+            except FileNotFoundError:
+                print("No metadata file found")
+                
+            return True
+            
+        except Exception as e:
+            print(f"Error loading model: {e}")
         with open(os.path.join(path, "pipeline.pkl"), "rb") as f:
             self.feature_processing_pipeline = joblib.load(f)
         with open(os.path.join(path, "scaler.pkl"), "rb") as f:
             self.scaler = joblib.load(f)
             
         # Need to initialize model with correct input size before loading weights
-        dummy_X, _ = self._samples_to_dataframe([])  # Empty list to get feature size
-        dummy_X = self.feature_processing_pipeline.transform(dummy_X)
-        input_size = dummy_X.shape[1]
-        
-        self.model = MLPNetwork(input_size, self.mlp_params['hidden_sizes']).to(self.device)
-        self.model.load_state_dict(torch.load(os.path.join(path, "model.pt")))
+        # dummy_X, paper_embeddings, author_embeddings, _ = self._samples_to_dataframe([])  # Empty list to get feature size
+        # # dummy_X = self.feature_processing_pipeline.transform(dummy_X)
+        # # input_size = paper_embeddings.shape[0] + author_embeddings.shape
+        # input_size = paper_embeddings.shape[0][1] + author_embeddings.shape[0][1]
+        # self.model = MLPNetwork(input_size, self.mlp_params['hidden_sizes']).to(self.device)
+        # self.model.load_state_dict(torch.load(os.path.join(path, "model.pt")))

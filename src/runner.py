@@ -44,8 +44,6 @@ def runner(config: dict):
         process_citing_papers(config)
     if config["runner"]["data"]["process_authors"]:
         process_authors(config)
-    if config["runner"]["data"]["process_author_embedding"]:
-        process_author_embedding(config)
     if config["runner"]["data"]["get_abstracts"]:
         get_abstracts(config)
     if config["runner"]["data"]["unify_papers"]:
@@ -54,17 +52,19 @@ def runner(config: dict):
         process_references(config)
     if config["runner"]["data"]["process_paper_embedding"]:
         process_paper_embedding(config)
-    # if config["runner"]["data"]["generate_samples"]:
-    #     generate_samples(config)
+    if config["runner"]["data"]["process_author_embedding"]:
+        process_author_embedding(config)
+    if config["runner"]["data"]["generate_samples"]:
+        generate_samples(config)
         
 
     # if config["runner"]["paper_embedding"]["fit"]:
     #     fit_paper_embedding(config)
 
-    # if config["runner"]["model"]["train"]:
-    #     train(config)
-    # if config["runner"]["model"]["eval"]:
-    #     eval(config)
+    if config["runner"]["model"]["train"]:
+        train(config)
+    if config["runner"]["model"]["eval"]:
+        eval(config)
         
     # if config["runner"]["ranking"]["generate_samples"]:
     #     generate_ranking_sample(config)
