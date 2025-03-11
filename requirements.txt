@@ -8,3 +8,5 @@ scikit-learn
 catboost
 pyyaml
 argparse
+pymupdf
+refextract
