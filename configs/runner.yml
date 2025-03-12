@@ -8,7 +8,8 @@ data:
   get_abstracts: True  # Prerequisite: data/process_citing_papers
   unify_papers: True  # Prerequisite: data/process_authors & data/get_abstracts
   process_references: True  # Prerequisite: data/unify_papers
-  process_paper_embedding: True # Prerequisite: data/process_references
+  process_author_paper_embedding: True # Prerequisite: data/process_references
+  process_paper_embedding: True # Prerequisite: data/process_author_paper_embedding
   generate_samples: True  # Prerequisite: data/process_references
 paper_embedding:
   fit: True  # Prerequisite: data
