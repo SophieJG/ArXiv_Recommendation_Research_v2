@@ -98,8 +98,8 @@ def test_embedding_model():
     # multi_file_query returns a list of dicts. Merge it to a single dict. Note that a single paper can have citations in multiple
     # res files so the dictionaries needs to be "deep" merged
     
-    missing_paperid_abstract_dict = {156053035: "There was no abstract from this paper, So this is a placeholder."}
-    missing_paper_count = 1
+    missing_paperid_abstract_dict = {}
+    missing_paper_count = 0
 
     embedding_papers = {}
 

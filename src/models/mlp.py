@@ -23,14 +23,22 @@ class MLPNetwork(nn.Module):
         prev_size = input_size
         
         for hidden_size in hidden_sizes:
+            linear = nn.Linear(prev_size, hidden_size)
+            # Initialize weights properly
+            nn.init.xavier_uniform_(linear.weight)
+            nn.init.zeros_(linear.bias)
+            
             layers.extend([
-                nn.Linear(prev_size, hidden_size),
+                linear,
                 nn.ReLU()
             ])
             prev_size = hidden_size
             
-        layers.append(nn.Linear(prev_size, 1))
-        layers.append(nn.Sigmoid())
+        final_layer = nn.Linear(prev_size, 1)
+        nn.init.xavier_uniform_(final_layer.weight)
+        nn.init.zeros_(final_layer.bias)
+        
+        layers.append(final_layer)
         
         self.model = nn.Sequential(*layers)
         
@@ -48,11 +56,11 @@ class MLPModel(BaseModel):
         
         # Default MLP parameters if not specified
         self.mlp_params = {
-            'hidden_sizes': (128, 64),
+            'hidden_sizes': (64, 32),
             'max_epochs': 100,
             'batch_size': 32,
             'learning_rate': 0.001,
-            'early_stopping_patience': 5,
+            'early_stopping_patience': 10,
             **params
         }
 
@@ -80,8 +88,6 @@ class MLPModel(BaseModel):
 
     def _samples_to_dataframe(self, samples: list):
         new_samples = []
-        paper_embeddings = []
-        author_embeddings = []
         labels = []
 
         for sample in tqdm(samples, desc="Processing Samples"):
@@ -107,10 +113,21 @@ class MLPModel(BaseModel):
 
         return df, labels
 
+    def _process_dataframe_embeddings(self, df: pd.DataFrame):
+        paper_embeddings = np.vstack(df["paper_embedding"].values)
+        author_embeddings = np.vstack(df["author_embedding"].values)
+        embeddings = np.hstack((paper_embeddings, author_embeddings))
+        return embeddings
+
     def fit(self, train_samples: list, validation_samples: list):
         X_train, y_train = self._samples_to_dataframe(train_samples)
-        print("X_train:", X_train.head())
-        X_train = torch.FloatTensor(X_train.to_numpy()).to(self.device)
+        X_train = self._process_dataframe_embeddings(X_train)
+        # print("X_train:", X_train.head())
+        X_train = torch.FloatTensor(X_train).to(self.device)
+
+        print("X_train mean:", torch.mean(X_train))
+        print("X_train std:", torch.std(X_train))
+
         # Create feature processing pipeline
         self.feature_processing_pipeline = ColumnTransformer([
             ('passthrough', 'passthrough', ["author_num_papers"]),
@@ -125,7 +142,8 @@ class MLPModel(BaseModel):
         
         # # Transform validation data
         X_val, y_val = self._samples_to_dataframe(validation_samples)
-        X_val = torch.FloatTensor(X_val.to_numpy()).to(self.device)
+        X_val = self._process_dataframe_embeddings(X_val)
+        X_val = torch.FloatTensor(X_val).to(self.device)
         # X_val_sparse = self.feature_processing_pipeline.transform(X_val)
         # X_val_sparse = self.scaler.transform(X_val.toarray())
         
@@ -152,7 +170,7 @@ class MLPModel(BaseModel):
         self.model = MLPNetwork(self.input_size, self.mlp_params['hidden_sizes']).to(self.device)
         
         # Training setup
-        criterion = nn.BCELoss()
+        criterion = nn.BCEWithLogitsLoss()
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.mlp_params['learning_rate'])
         
         # Training loop
@@ -161,6 +179,10 @@ class MLPModel(BaseModel):
         
         for epoch in range(self.mlp_params['max_epochs']):
             self.model.train()
+            total_train_loss = 0
+            num_batches = 0
+            
+            # Training phase
             for i in range(0, len(X_train), self.mlp_params['batch_size']):
                 batch_X = X_train[i:i + self.mlp_params['batch_size']]
                 batch_y = y_train[i:i + self.mlp_params['batch_size']]
@@ -169,13 +191,37 @@ class MLPModel(BaseModel):
                 outputs = self.model(batch_X).squeeze()
                 loss = criterion(outputs, batch_y)
                 loss.backward()
+                
+                # Add gradient checking
+                # for name, param in self.model.named_parameters():
+                #     if param.grad is not None:
+                #         print(f"Gradient stats for {name}:")
+                #         print(f"Mean: {param.grad.mean():.6f}")
+                #         print(f"Std: {param.grad.std():.6f}")
+                
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 optimizer.step()
+                
+                total_train_loss += loss.item()
+                num_batches += 1
+                
+                # Inside training loop, after forward pass
+                # print("Predictions distribution:", 
+                #       torch.histc(outputs, bins=2, min=0, max=1))
             
-            # Validation
+            # Calculate average training loss
+            avg_train_loss = total_train_loss / num_batches
+            
+            # Validation phase
             self.model.eval()
             with torch.no_grad():
                 val_outputs = self.model(X_val).squeeze()
                 val_loss = criterion(val_outputs, y_val)
+                
+            # Print progress
+            print(f'Epoch [{epoch+1}/{self.mlp_params["max_epochs"]}] '
+                  f'Training Loss: {avg_train_loss:.4f}, '
+                  f'Validation Loss: {val_loss:.4f}')
                 
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
@@ -184,12 +230,13 @@ class MLPModel(BaseModel):
                 patience_counter += 1
                 
             if patience_counter >= self.mlp_params['early_stopping_patience']:
-                print(f"Early stopping at epoch {epoch}")
+                print(f"Early stopping at epoch {epoch+1}")
                 break
 
     def _predict_proba(self, X: pd.DataFrame):
         # X = self.feature_processing_pipeline.transform(X)
         # X = self.scaler.transform(X.toarray())
+        X = self._process_dataframe_embeddings(X)
         X = torch.FloatTensor(X).to(self.device)
         
         self.model.eval()
