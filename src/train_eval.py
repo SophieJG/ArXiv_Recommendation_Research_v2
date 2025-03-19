@@ -7,12 +7,12 @@ from models.cocitation_sigmoid import CocitationSigmoidModel
 from models.cocitation_logistic import CocitationLogistic
 from models.dual_model import DualModel
 from models.mlp import MLPModel
-from util import models_dir, tmp_data_dir
+from util import models_dir, tmp_data_dir, data_dir
 
 from sklearn.metrics import average_precision_score, roc_auc_score, accuracy_score
 
 
-def get_model(config):
+def get_model(config, param):
     assert config["model"] is not None, "Model config is required"
     model_type = config["model"]["model"]
     match model_type:
@@ -20,19 +20,20 @@ def get_model(config):
         case "cocitation_sigmoid": return CocitationSigmoidModel(config["model"]["params"])
         case "cocitation_logistic": return CocitationLogistic(config["model"]["params"])
         case "dual_model": return DualModel(config["model"]["params"])
-        case "mlp": return MLPModel(config["model"]["params"])
+        case "mlp": return MLPModel(param)
         case _:
             raise ValueError(f"Unknown model type: {model_type}")
 
 
 def train(
-    config: dict
+    config: dict,
+    param: dict
 ):
     """
 Train a model and store the trained model to disk
 """
     print("\n*****\nTraining")
-    model = get_model(config)
+    model = get_model(config, param)
     train_samples_path = os.path.join(tmp_data_dir(config), "train_samples.json")
     if os.path.exists(train_samples_path):
         print(f"Loading train samples from {train_samples_path}")
@@ -73,14 +74,18 @@ def calc_metrics(labels, proba):
 
 
 def eval(
-    config: dict
+    config: dict,
+    param: dict
 ):
     """
 Calculate binary classification metrics on the trained model and all data folds
 """
     print("\n*****\nEvaluation")
+    eval_dir = os.path.join(data_dir(config), "eval")
+    if not os.path.exists(eval_dir):
+        os.makedirs(eval_dir)
     data = Data(config)
-    model = get_model(config)
+    model = get_model(config, param)
     model.load(models_dir(config), config["model"]["model"], config["model"]["version"])
     metrics = {}
     for fold in ["train", "validation", "test"]:
@@ -88,4 +93,7 @@ Calculate binary classification metrics on the trained model and all data folds
         proba = model.predict_proba(samples)
         labels = [s["label"] for s in samples]
         metrics[fold] = calc_metrics(labels, proba)
+    with open(os.path.join(eval_dir, "metrics.json"), "w") as f:
+        json.dump(param, f, indent=4)
+        json.dump(metrics, f, indent=4)
     print(json.dumps(metrics, indent=4))

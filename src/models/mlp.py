@@ -55,14 +55,7 @@ class MLPModel(BaseModel):
         self.input_size = None
         
         # Default MLP parameters if not specified
-        self.mlp_params = {
-            'hidden_sizes': (64, 32),
-            'max_epochs': 100,
-            'batch_size': 32,
-            'learning_rate': 0.001,
-            'early_stopping_patience': 10,
-            **params
-        }
+        self.mlp_params = params
 
     @staticmethod
     def _process_author(new_sample: dict, sample: dict):
@@ -125,8 +118,11 @@ class MLPModel(BaseModel):
         # print("X_train:", X_train.head())
         X_train = torch.FloatTensor(X_train).to(self.device)
 
-        print("X_train mean:", torch.mean(X_train))
-        print("X_train std:", torch.std(X_train))
+        # print("X_train shape:", X_train.shape)
+        # print("X_train mean:", torch.mean(X_train))
+        # print("X_train std:", torch.std(X_train))
+        # print("X_train feature mean:", torch.mean(X_train, dim=0))
+        # print("X_train feature std:", torch.std(X_train, dim=0))
 
         # Create feature processing pipeline
         self.feature_processing_pipeline = ColumnTransformer([
@@ -157,10 +153,10 @@ class MLPModel(BaseModel):
         # X_train = train_embeddings
         # X_val = val_embeddings
 
-        print("X_train:", X_train)
-        print("X_val:", X_val)
-        print("y_train:", y_train)
-        print("y_val:", y_val)
+        # print("X_train:", X_train)
+        # print("X_val:", X_val)
+        # print("y_train:", y_train)
+        # print("y_val:", y_val)
 
         
         print("Training data size:", X_train.shape)
@@ -210,6 +206,7 @@ class MLPModel(BaseModel):
                 #       torch.histc(outputs, bins=2, min=0, max=1))
             
             # Calculate average training loss
+            # print("num_batches:", num_batches)
             avg_train_loss = total_train_loss / num_batches
             
             # Validation phase
