@@ -3,7 +3,7 @@ import os
 
 import pandas as pd
 from tqdm import tqdm
-from util import data_dir, kaggle_data_path, authors_path, papers_path
+from util import data_dir, kaggle_data_path, authors_path, papers_path, tmp_data_dir
 import sys
 
 
@@ -20,6 +20,7 @@ Main class used to store data for training and evaluation purpose. See the readm
         self.papers = json.load(open(papers_path(config)))
         print("Data: loading authors data")
         self.authors = json.load(open(authors_path(config)))
+        self.author_embeddings = json.load(open(tmp_data_dir(config) + f"/author_embedding_{config['data']['author_embedding_type']}.json"))
         print("Data: loading folds")
         self.train = pd.read_csv(os.path.join(data_dir(config), "train.csv"))
         self.validation = pd.read_csv(os.path.join(data_dir(config), "validation.csv"))
@@ -38,7 +39,7 @@ Main class used to store data for training and evaluation purpose. See the readm
         #     if paper["year"] < paper_year:
         #         author_papers.append(paper)
         
-        author_embedding = self.authors[author_id]["embedding"]
+        author_embedding = self.author_embeddings[author_id]
         if author_embedding is None or author_embedding == [] or author_embedding == "":
             print(f"author_embedding is None for author {author_id}")
             
