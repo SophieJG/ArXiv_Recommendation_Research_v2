@@ -237,7 +237,7 @@ def process_paper_embedding(config: dict):
             if "abstract" in paper_info[paper_id].keys():
                 missing_paperid_abstract_dict[paper_id] = paper_info[paper_id]["abstract"]
                 missing_paper_abstract_count += 1
-                print(f"paper_id {paper_id} not found in embedding_papers")
+                # print(f"paper_id {paper_id} not found in embedding_papers")
             else:
                 abstract_needed_paper_ids.append(paper_id)
     
@@ -271,7 +271,7 @@ def process_paper_embedding(config: dict):
             paper_info[paper_id]["embedding"] = embedding_papers[paper_id]
         else:
             paper_info[paper_id]["embedding"] = []
-            print(f"paper_id {paper_id} not generated")
+            # print(f"paper_id {paper_id} not generated")
 
     
     print(f"Saving to {embedding_papers_path}")
@@ -306,17 +306,21 @@ def process_author_paper_embedding(config: dict):
 
     # First find all paper embeddings of author's published papers
     print("Querying author's published papers embedding from current embedding temp file")
+    paper_found_count = 0
+    missing_paper_ids = []
     for author_id, author_info in authors.items():
         #author_id is a string
         #paper_id is an int
-        missing_paper_ids = []
         author_paper_ids = author_info["papers"]
         for paper_id in author_paper_ids:
             if str(paper_id) not in paper_embedding:
                 missing_paper_ids.append(paper_id)
             else:
+                paper_found_count += 1
                 author_paper_embedding[str(author_id)] = paper_embedding[str(paper_id)]
-        
+    print(f"Number of papers found in the semantic scholar embedding table: {paper_found_count}")
+    print(f"Number of papers not found in the semantic scholar embedding table: {len(missing_paper_ids)}")
+
     author_paper_embedding_dict = {}
     # If author's published paper are not queried from the embedding table, we need to query them
     if len(missing_paper_ids) > 0:
@@ -365,6 +369,12 @@ def process_author_paper_embedding(config: dict):
     print(f"Saving to {author_paper_embedding_path}")
     with open(author_paper_embedding_path, 'w') as f:
         json.dump(author_paper_embedding, f, indent=4)
+    
+    paper_embedding.update(author_paper_embedding)
+
+    print(f"Saving to {paper_embedding_path}    ")
+    with open(paper_embedding_path, 'w') as f:
+        json.dump(paper_embedding, f, indent=4)
 
     return
 
@@ -378,11 +388,6 @@ def _process_author_embedding_inner(config: dict, author_embedding_path: str):
 
     for author_id, author_info in authors.items():
         author_info["embedding"] = author_paper_embedding[str(author_id)]
-    
-    print(f"Saving to {author_path}")
-    with open(author_path, 'w') as f:
-        json.dump(authors, f, indent=4)
-
     return
 
     
@@ -400,9 +405,9 @@ def process_author_embedding(config: dict):
         author_embedding_single_path = os.path.join(tmp_data_dir(config), "author_embedding_single.json")
         if os.path.exists(author_embedding_single_path):
             print(f"{author_embedding_single_path} exists - Skipping")
-            _process_author_embedding_inner(config, author_embedding_single_path)
+            # _process_author_embedding_inner(config, author_embedding_single_path)
             return
-
+        place_holder_count = 0
         author_embedding_single = {}
         for author_id, author_info in authors.items():
             found = False
@@ -413,21 +418,24 @@ def process_author_embedding(config: dict):
                     found = True
                     break
             if not found:
-                print(f"author_id {author_id} has no embedding, replacing with placeholder")
+                # print(f"author_id {author_id} has no embedding, replacing with placeholder")
+                place_holder_count += 1
                 author_embedding_single[str(author_id)] = placeholder_embed
         
+        print(f"Number of authors with no embedding: {place_holder_count}")
         print(f"Saving to {author_embedding_single_path}")
         with open(author_embedding_single_path, 'w') as f:
             json.dump(author_embedding_single, f, indent=4)
-        _process_author_embedding_inner(config, author_embedding_single_path)
+        # _process_author_embedding_inner(config, author_embedding_single_path)
 
     elif config["data"]["author_embedding_type"] == "mean":
         author_embedding_mean_path = os.path.join(tmp_data_dir(config), "author_embedding_mean.json")
         if os.path.exists(author_embedding_mean_path):
             print(f"{author_embedding_mean_path} exists - Skipping")
-            _process_author_embedding_inner(config, author_embedding_mean_path)
+            # _process_author_embedding_inner(config, author_embedding_mean_path)
             return
-        
+
+        place_holder_count = 0
         author_embedding_mean = {}
         for author_id, author_info in authors.items():
             author_paper_ids = author_info["papers"]
@@ -436,23 +444,25 @@ def process_author_embedding(config: dict):
                 if str(paper_id) in paper_embedding:
                     paper_embeddings.append(paper_embedding[str(paper_id)])
             if len(paper_embeddings) == 0:
-                print(f"author_id {author_id} has no embedding, replacing with placeholder")
+                # print(f"author_id {author_id} has no embedding, replacing with placeholder")
+                place_holder_count += 1
                 author_embedding_mean[str(author_id)] = placeholder_embed
             else:
                 author_embedding_mean[str(author_id)] = np.mean(paper_embeddings, axis=0).tolist()
         
+        print(f"Number of authors with no embedding: {place_holder_count}")
         print(f"Saving to {author_embedding_mean_path}")
         with open(author_embedding_mean_path, 'w') as f:
             json.dump(author_embedding_mean, f, indent=4)
-        _process_author_embedding_inner(config, author_embedding_mean_path)
+        # _process_author_embedding_inner(config, author_embedding_mean_path)
 
     elif config["data"]["author_embedding_type"] == "sum":
         author_embedding_sum_path = os.path.join(tmp_data_dir(config), "author_embedding_sum.json")
         if os.path.exists(author_embedding_sum_path):
             print(f"{author_embedding_sum_path} exists - Skipping")
-            _process_author_embedding_inner(config, author_embedding_sum_path)
+            # _process_author_embedding_inner(config, author_embedding_sum_path)
             return
-        
+        place_holder_count = 0
         author_embedding_sum = {}
         for author_id, author_info in authors.items():
             author_paper_ids = author_info["papers"]
@@ -461,15 +471,17 @@ def process_author_embedding(config: dict):
                 if str(paper_id) in paper_embedding:
                     paper_embeddings.append(paper_embedding[str(paper_id)])
             if len(paper_embeddings) == 0:
-                print(f"author_id {author_id} has no embedding, replacing with placeholder")
+                # print(f"author_id {author_id} has no embedding, replacing with placeholder")
+                place_holder_count += 1
                 author_embedding_sum[str(author_id)] = placeholder_embed
             else:
                 author_embedding_sum[str(author_id)] = np.sum(paper_embeddings, axis=0).tolist()
-    
+        
+        print(f"Number of authors with no embedding: {place_holder_count}")
         print(f"Saving to {author_embedding_sum_path}")
         with open(author_embedding_sum_path, 'w') as f:
             json.dump(author_embedding_sum, f, indent=4)
-        _process_author_embedding_inner(config, author_embedding_sum_path)
+        # _process_author_embedding_inner(config, author_embedding_sum_path)
     
     return
 
@@ -730,6 +742,7 @@ This stage unifies all previous paper queries into a single table including all 
         "papers with citing_papers" : 0,
         "papers with abstract" : 0
     }
+
     for paper in all_papers.values():
         cntrs["papers"] += 1
         cntrs["non-arxiv papers"] += "arxiv_id" not in paper
@@ -822,12 +835,11 @@ result from errors in Semantic Scholar's name disambiguation logic
     for author, ps in author_papers.items():
         ps = set(ps)
         if len(ps) < config["data"]["max_author_papers"]:
-            valid_authors[author] = {"papers": list(ps)}
+            valid_authors[author] = list(ps)
             valid_paper_ids.union(ps)
-    print(f"valid authors: {len(valid_authors)} / {len(author_papers)}") #TODO: update handles for later author processing
+    print(f"valid authors: {len(valid_authors)} / {len(author_papers)}")
     print(f"valid papers: {len(valid_paper_ids)} / {len(papers)}")
-    valid_papers = {id: {"papers":papers[str(id)]} for id in valid_paper_ids}
-
+    valid_papers = {id: papers[id] for id in valid_paper_ids}
 
     for path, data in zip([authors_output_path, author_papers_path], [valid_authors, valid_papers]):
         print(f"Saving to {path}")
@@ -871,10 +883,13 @@ We query the `abstracts` table to get the abstracts of all papers: Arxiv papers,
     for d in tqdm(dict_list, "merging files"):
         abstracts.update(d)
     
+    no_abstract_count = 0
+
     for paper_id in paper_ids:
         if paper_id not in abstracts:
-            print(f"Paper {paper_id} has no abstract")
-            abstracts[paper_id] = "There was no abstract from this paper, So this is a placeholder."
+            no_abstract_count += 1
+
+    print(f"No abstract count: {no_abstract_count}")
 
     print(f"Saving to {output_path}")
     with open(output_path, 'w') as f:
