@@ -7,6 +7,7 @@ from paper_embedding import fit_paper_embedding, generate_paper_embeddings
 from semantic_scholar_data import process_papers, process_citations, process_citing_papers, process_authors, \
     kaggle_json_to_parquet, generate_ranking_sample, generate_samples, unify_papers, get_abstracts, process_references
 from train_eval import train, eval
+from citation_matrix_data import process_citation_matrix
 
 
 def load_if_exists(path: str):
@@ -52,7 +53,9 @@ def runner(config: dict):
         process_references(config)
     if config["runner"]["data"]["generate_samples"]:
         generate_samples(config)
-        
+
+    if config["runner"]["matrix"]["generate_citation_matrix"]:
+        process_citation_matrix(config)
 
     if config["runner"]["paper_embedding"]["fit"]:
         fit_paper_embedding(config)

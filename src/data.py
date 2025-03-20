@@ -32,7 +32,8 @@ Main class used to store data for training and evaluation purpose. See the readm
             # Filter the author's published papers by year
             if str(id) not in self.papers:
                 continue
-            paper = self.papers[str(id)]
+            paper = self.papers[str(id)].copy()
+            paper['paper_id'] = int(id)
             if paper["year"] < paper_year:
                 author_papers.append(paper)
         new_sample["author"] = {
@@ -52,6 +53,8 @@ Main class used to store data for training and evaluation purpose. See the readm
         new_sample["title"] = kaggle_paper_data["title"]
         new_sample["categories"] = list(kaggle_paper_data["categories"])
         new_sample["year"] = kaggle_paper_data["year_updated"]
+        new_sample["update_date"] = kaggle_paper_data["update_date"] # need this for citation matrix
+        new_sample['paper_id'] = int(paper_id) # need this for citation matrix
         return new_sample
 
     def _parse_fold(self, fold_str: str):

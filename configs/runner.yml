@@ -8,10 +8,12 @@ data:
   unify_papers: True  # Prerequisite: data/process_authors & data/get_abstracts
   process_references: True  # Prerequisite: data/unify_papers
   generate_samples: True  # Prerequisite: data/process_references
+matrix:
+  generate_citation_matrix: True # Prerequisite: data
 paper_embedding:
   fit: True  # Prerequisite: data
 model:
-  train: True  # Prerequisite: data
+  train: True  # Prerequisite: data, and also matrix if using matrix-based models
   eval: True  # Prerequisite: model/train
 ranking:
   generate_samples: True  # Prerequisite: data
