@@ -31,13 +31,13 @@ Main class used to store data for training and evaluation purpose. See the readm
     def _process_author(self, new_sample: dict, author_id: str, paper_year: int):
         author_papers = []
         current_year = 0
-        # for id in self.authors[author_id]["papers"]:
-        #     # Filter the author's published papers by year
-        #     if str(id) not in self.papers:
-        #         continue
-        #     paper = self.papers[str(id)]
-        #     if paper["year"] < paper_year:
-        #         author_papers.append(paper)
+        for id in self.authors[author_id]["papers"]:
+            # Filter the author's published papers by year
+            if str(id) not in self.papers:
+                continue
+            paper = self.papers[str(id)]
+            if paper["year"] < paper_year:
+                author_papers.append(paper)
         
         author_embedding = self.author_embeddings[author_id]
         if author_embedding is None or author_embedding == [] or author_embedding == "":
@@ -45,7 +45,7 @@ Main class used to store data for training and evaluation purpose. See the readm
             
         new_sample["author"] = {
             "id": author_id,
-        #     "papers": author_papers,
+            "papers": author_papers,
             "embedding": author_embedding
         }
         # print(new_sample)

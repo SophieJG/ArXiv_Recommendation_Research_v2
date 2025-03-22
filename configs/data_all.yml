@@ -10,7 +10,8 @@ prepare_authors_data_batch_sizes: [100, 25, 5, 1]  # See src/data_queries.py:pre
 num_papers: 0  # Number of papers to include in the dataset. Use 0 to include all papers
 num_negative: 50  # Number of negative samples for each paper
 max_author_papers: 500  # Drop authors with more publications than `max_author_papers`. We believe that these result from errors in Semantic Scholar's name disambiguation logic
-n_jobs: 8  # How many cores to use when querying data
+n_jobs: 50  # How many cores to use when querying data
+author_embedding_type: "single" # ["single", "mean", "sum"]
 
 # Ranking params
 top_k: [1, 5, 10]  # Ks to consider for metrics which take top k. Note that the rankers only rank up to the largest k so this has an effect on ranking run time

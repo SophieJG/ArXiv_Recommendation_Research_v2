@@ -311,7 +311,7 @@ def process_author_paper_embedding(config: dict):
     for author_id, author_info in authors.items():
         #author_id is a string
         #paper_id is an int
-        author_paper_ids = author_info["papers"]
+        author_paper_ids = author_info
         for paper_id in author_paper_ids:
             if str(paper_id) not in paper_embedding:
                 missing_paper_ids.append(paper_id)
@@ -411,7 +411,7 @@ def process_author_embedding(config: dict):
         author_embedding_single = {}
         for author_id, author_info in authors.items():
             found = False
-            author_paper_ids = author_info["papers"]
+            author_paper_ids = author_info
             for paper_id in author_paper_ids:
                 if str(paper_id) in paper_embedding:
                     author_embedding_single[str(author_id)] = paper_embedding[str(paper_id)]
@@ -438,7 +438,7 @@ def process_author_embedding(config: dict):
         place_holder_count = 0
         author_embedding_mean = {}
         for author_id, author_info in authors.items():
-            author_paper_ids = author_info["papers"]
+            author_paper_ids = author_info
             paper_embeddings = []
             for paper_id in author_paper_ids:
                 if str(paper_id) in paper_embedding:
@@ -465,7 +465,7 @@ def process_author_embedding(config: dict):
         place_holder_count = 0
         author_embedding_sum = {}
         for author_id, author_info in authors.items():
-            author_paper_ids = author_info["papers"]
+            author_paper_ids = author_info
             paper_embeddings = []
             for paper_id in author_paper_ids:
                 if str(paper_id) in paper_embedding:
