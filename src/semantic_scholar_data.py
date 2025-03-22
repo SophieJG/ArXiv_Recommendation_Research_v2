@@ -9,6 +9,7 @@ from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 from joblib import Parallel, delayed
 import copy
+import ast
 
 from util import authors_path, data_dir, kaggle_data_path, papers_path, tmp_data_dir
 
@@ -748,3 +749,70 @@ Arguments:
     df_test = df[df["paper"].isin(papers_test.index)]
     assert len(df_train) + len(df_test) == len(df)
     return df_train, df_test
+
+def _process_embedding_papers_inner(path: str, ids: list):
+    """
+A helper function to process a single SemS papers chunk file. Should only be called through process_papers. Go
+over all papers in the file and returns the info of all papers with id in `ids`
+
+Arguments:
+    path: the file to load and process
+    ids: a list of strings/integers specifying which papers to load
+    id_type: either CorpusId or ArXiv
+"""
+    # _load_papers_inner could be called in parallel so it's important to copy the inputs to avoid locks
+    # the corpus id in the embedding file is an integer
+    ids = set(int(id) for id in ids)
+    paper_embeddings = {}
+    with gzip.open(path, "rt", encoding="UTF-8") as fin:
+        for l in fin:
+            j = json.loads(l)
+            if j["corpusid"] not in ids:
+                # If the paper id is not in the set of required ids - ignore the paper
+                continue
+            paper_embeddings[str(j["corpusid"])] = ast.literal_eval(j["vector"])
+    return paper_embeddings
+
+
+def process_paper_embedding(config: dict):
+    """
+    Using the list of corpus ids of the Arxiv papers we query the `embedding` table to get spector2 embedding for each paper.
+    """
+    print("\nLoading embedding info from Semantic Scholar")
+    embedding_papers_path = os.path.join(tmp_data_dir(config), "papers_embedding.json")
+    if os.path.exists(embedding_papers_path):
+        print(f"{embedding_papers_path} exists - Skipping")
+        return
+
+    paper_info_path = os.path.join(data_dir(config), "papers.json")
+    paper_info = json.load(open(paper_info_path))
+    # corpus ids for arxiv papers
+    arxiv_papers = [id for id in paper_info.keys()]
+
+    res = multi_file_query(
+        os.path.join(config["data"]["semantic_scholar_path"], "embeddings-specter_v2", "*.gz"),
+        _process_embedding_papers_inner,
+        config["data"]["n_jobs"],
+        ids=arxiv_papers
+    )
+
+    # multi_file_query returns a list of dicts. Merge it to a single dict. Note that a single paper can have citations in multiple
+    # res files so the dictionaries needs to be "deep" merged
+    embedding_papers = {}
+    for d in tqdm(res, "merging embedding files"):
+        embedding_papers.update(d)
+    # print("embedding_papers:\n", embedding_papers）
+
+
+    for paper_id, paper in paper_info.items():
+        if paper_id in embedding_papers:
+            paper["embedding"] = embedding_papers[paper_id]
+
+    print(f"Saving to {embedding_papers_path}")
+    with open(embedding_papers_path, 'w') as f:
+        json.dump(embedding_papers, f, indent=4)
+    
+
+    print(f"Saving to {paper_info_path}")
+    with open(paper_info_path, 'w') as f:
+        json.dump(paper_info, f, indent=4)

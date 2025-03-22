@@ -1,0 +1,13 @@
+model: "mlp"  # Which model to train
+version: "0.0.0"  # Should be used when changing parameters, preprocessing etc.
+params:
+  hidden_sizes:
+    - [1024, 512, 256, 128, 64]
+  max_epochs:
+    - 1000
+  batch_size:
+    - 100000
+  learning_rate:
+    - 0.0005
+  early_stopping_patience:
+    - 10
