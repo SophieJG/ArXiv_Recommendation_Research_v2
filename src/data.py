@@ -85,6 +85,7 @@ that implies removing all publications by the author that proceed (are after) th
             self._process_paper(new_sample, paper_id)
             self._process_author(new_sample, author_id, new_sample["year"])
             samples.append(new_sample)
+        print(samples)
         return samples
 
     def get_ranking_papers(self):

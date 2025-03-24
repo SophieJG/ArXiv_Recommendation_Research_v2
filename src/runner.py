@@ -5,7 +5,7 @@ import yaml
 from ranking import evaluate_ranker, generate_utility_predictions
 from paper_embedding import fit_paper_embedding, generate_paper_embeddings
 from semantic_scholar_data import process_papers, process_citations, process_citing_papers, process_authors, \
-    kaggle_json_to_parquet, generate_ranking_sample, generate_samples, unify_papers, get_abstracts, process_references
+    kaggle_json_to_parquet, generate_ranking_sample, generate_samples, unify_papers, get_abstracts, process_references, process_paper_embedding
 from train_eval import train, eval
 
 
@@ -50,6 +50,8 @@ def runner(config: dict):
         unify_papers(config)
     if config["runner"]["data"]["process_references"]:
         process_references(config)
+    if config["runner"]["data"]["process_paper_embedding"]:
+        process_paper_embedding(config)
     if config["runner"]["data"]["generate_samples"]:
         generate_samples(config)
         
