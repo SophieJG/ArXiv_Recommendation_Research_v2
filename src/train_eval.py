@@ -6,6 +6,7 @@ from models.cocitation_sigmoid import CocitationSigmoidModel
 from models.cocitation_logistic import CocitationLogistic
 from models.dual_model import DualModel
 from util import models_dir
+from models.cosine_sim import CosineSimilarityModel
 
 from sklearn.metrics import average_precision_score, roc_auc_score, accuracy_score
 
@@ -18,6 +19,7 @@ def get_model(config):
         case "cocitation_sigmoid": return CocitationSigmoidModel(config["model"]["params"])
         case "cocitation_logistic": return CocitationLogistic(config["model"]["params"])
         case "dual_model": return DualModel(config["model"]["params"])
+        case "cosine_sim": return CosineSimilarityModel(config["model"]["params"])
         case _:
             raise ValueError(f"Unknown model type: {model_type}")
 
