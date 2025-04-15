@@ -5,7 +5,7 @@ import pandas as pd
 from tqdm import tqdm
 from data import Data
 from paper_embedders.categories_embedder import CategoriesEmbedder
-from util import data_dir, models_dir
+from util import data_dir, models_dir, model_version_path
 
 
 def get_paper_embedder(config):
@@ -48,7 +48,10 @@ def generate_paper_embeddings(config: dict):
 Generate paper embeddings for all papers in the test set
 """
     print("\nGenerating paper embeddings")
-    output_path = os.path.join(data_dir(config), "ranking_papers.npz")
+    output_path = os.path.join(
+        model_version_path(models_dir(config), config["embedder"]["embedder"], config["embedder"]["version"]), 
+        f"ranking_papers.npz"
+        )
     if os.path.exists(output_path):
         print(f"{output_path} exists - Skipping")
         return
@@ -61,4 +64,4 @@ Generate paper embeddings for all papers in the test set
     embeddings = embeddings / np.sqrt(np.square(embeddings).sum(axis=1))[:, np.newaxis]
     paper_ids = np.array([paper["id"] for paper in papers])
     print(f"Saving to {output_path}")
-    np.savez(os.path.join(data_dir(config), "ranking_papers.npz"), paper_ids=paper_ids, embeddings=embeddings)
+    np.savez(output_path, paper_ids=paper_ids, embeddings=embeddings)

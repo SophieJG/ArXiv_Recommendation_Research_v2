@@ -620,6 +620,7 @@ a random set of papers. See config["data"]["test_is_2020"]
     num_null_papers = 0
     samples = []
 
+    # TODO: ensure positive and negative authors have papers published in years before the arxiv paper year
     # Positive samples - all authors who cited the paper
     for paper_id, paper in tqdm(papers.items(), "Generating positive samples"):
         if "arxiv_id" not in paper:
@@ -640,6 +641,7 @@ a random set of papers. See config["data"]["test_is_2020"]
             )
 
     # Negative samples - a random citing author
+    # TODO: ensure negative authors have papers published in years before the arxiv paper year
     # There's a very small chance that this author did cite the paper but what can you do...
     citing_authors = list(set([s["author"] for s in samples]))
     cited_papers = list(set([s["paper"] for s in samples]))
@@ -679,7 +681,7 @@ a random set of papers. See config["data"]["test_is_2020"]
 def generate_ranking_sample(config: dict):
     """
 Generate the data sample used for ranking. These are all papers in the test fold and all authors who 
-interacted with at least one paper in the test fold
+interacted with at least one paper in the test fold (provided they have papers before the test year)
 """
     print("\nGenerating ranking fold")
     output_path = os.path.join(data_dir(config), "ranking.json")
@@ -710,8 +712,17 @@ interacted with at least one paper in the test fold
             for author in papers[citing_paper]["authors"]:
                 if author not in valid_authors:
                     continue
-                positive_pairs.append((int(paper_id), int(author)))
-                test_authors.add(author)
+
+                # check authors' papers and make sure they have one before the test year
+                test_year = papers[paper_id]["year"]
+                author_has_published_before_test_year = False
+                for author_paper_id in authors[str(author)]:
+                    if str(author_paper_id) in papers and papers[str(author_paper_id)]["year"] < test_year:
+                        author_has_published_before_test_year = True
+                        break
+                if author_has_published_before_test_year:
+                    positive_pairs.append((int(paper_id), int(author)))
+                    test_authors.add(author)
     test_authors = sorted(list(test_authors.intersection(valid_authors)))
 
     print(f"#ranking papers: {len(test_papers)}")

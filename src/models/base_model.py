@@ -1,5 +1,6 @@
 import os
 from data import Data
+from util import model_version_path
 
 
 class BaseModel:
@@ -15,7 +16,7 @@ class BaseModel:
         model: str,
         version: str
     ):
-        path = os.path.join(path, f"{model}.{version}")
+        path = model_version_path(path, model, version)
         print(f"Saving {model} model to {path}")
         os.makedirs(path, exist_ok=True)
         self._save(path)
@@ -26,7 +27,7 @@ class BaseModel:
         model: str,
         version: str
     ):
-        path = os.path.join(path, f"{model}.{version}")
+        path = model_version_path(path, model, version)
         print(f"Loading {model} model from {path}")
         self._load(path)
 

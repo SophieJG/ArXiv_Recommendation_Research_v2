@@ -9,7 +9,7 @@ from rankers.random_ranker import RandomRanker
 from rankers.utility_ranker import UtilityRanker
 from rankers.diversity_ranker import DiversityRanker
 from train_eval import get_model
-from util import data_dir, mean_consine_distance, models_dir
+from util import data_dir, mean_consine_distance, models_dir, model_version_path
 
 
 def get_ranker(config, items_to_rank: int):
@@ -27,7 +27,10 @@ Generate utility predictions for all pairs of <paper, author> in the test set. D
 the predictions are calculated in batches of `batch_size` predictions
 """
     print("\nGenerating utility predictions for ranking")
-    output_path = os.path.join(data_dir(config), f"ranking_utility.parquet")
+    output_path = os.path.join(
+        model_version_path(models_dir(config), config["model"]["model"], config["model"]["version"]), 
+        f"ranking_utility.parquet"
+        )
     if os.path.exists(output_path):
         print(f"{output_path} exists - Skipping")
         return
@@ -45,6 +48,7 @@ the predictions are calculated in batches of `batch_size` predictions
         utility.append(model.predict_proba_ranking(papers, authors))
     utility = pd.DataFrame(
         np.vstack(utility),
+        # TODO TODO TODO: I need to have the authors only be authors who published papers before test year
         index=data.ranking["authors"],
         columns=data.ranking["papers"]
     )
@@ -56,7 +60,10 @@ def load_embeddings(config: dict):
     """
 Load pre-calculated paper embeddings
 """
-    tmp = np.load(os.path.join(data_dir(config), "ranking_papers.npz"))
+    tmp = np.load(os.path.join(
+        model_version_path(models_dir(config), config["embedder"]["embedder"], config["embedder"]["version"]), 
+        f"ranking_papers.npz"
+    ))
     paper_ids = tmp["paper_ids"]
     embeddings = tmp["embeddings"]
     # Verify that embedding vectors are normalized
@@ -86,8 +93,11 @@ Evaluate the ranker on the test fold
     items_to_rank = max(top_k)
 
     ranker = get_ranker(config, items_to_rank)
-    utility = pd.read_parquet(os.path.join(data_dir(config), f"ranking_utility.parquet"))
-    paper_embeddings = load_embeddings(config)
+    utility = pd.read_parquet(os.path.join(
+        model_version_path(models_dir(config), config["model"]["model"], config["model"]["version"]), 
+        f"ranking_utility.parquet"
+        ))
+    paper_embeddings = load_embeddings(config) if config["runner"]["ranking"]["generate_paper_embeddings"] else None
     data = Data(config)
     labels = pd.DataFrame.from_records(data.ranking["pairs"], columns=["paper", "author"])
 
@@ -127,19 +137,23 @@ Evaluate the ranker on the test fold
     
     # Diversity is defined as 1 minus the mean cosine distance between the top-k recommended papers - higher diversity implies
     # a more diverse set.
-    diversity_k = top_k
-    diversity = []
-    for k in diversity_k:
-        authors_diversity = []
-        for ranked_papers in ranked.values():
-            embeddings = [paper_embeddings[str(paper)] for paper in ranked_papers[:k]]
-            authors_diversity.append(mean_consine_distance(embeddings))
-        diversity.append(1. - np.mean(authors_diversity))
+    if paper_embeddings:
+        diversity_k = top_k
+        diversity = []
+        for k in diversity_k:
+            authors_diversity = []
+            for ranked_papers in ranked.values():
+                embeddings = [paper_embeddings[str(paper)] for paper in ranked_papers[:k]]
+                authors_diversity.append(mean_consine_distance(embeddings))
+            diversity.append(1. - np.mean(authors_diversity))
 
     metrics = {
         f"MRR (clipped to {items_to_rank})": np.mean(mrr),
         **{f"Precision @ {k}": np.mean(top_k_prec[idx]) for idx, k in enumerate(top_k)},
         **{f"Hit rate @ {k}": top_k_hit[idx] / len(author_min_hit) for idx, k in enumerate(top_k)},
-        **{f"Diversity @ {k}": diversity[idx] for idx, k in enumerate(diversity_k)},
     }
+    if paper_embeddings:
+        metrics.update({
+            **{f"Diversity @ {k}": diversity[idx] for idx, k in enumerate(diversity_k)},
+        })
     print(json.dumps(metrics, indent=4))

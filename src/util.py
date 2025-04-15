@@ -15,6 +15,10 @@ def models_dir(config: dict):
     return os.path.join(config["data"]["base_path"], "models")
 
 
+def model_version_path(model_path, model: str, version: str):
+    return os.path.join(model_path, f"{model}.{version}")
+
+
 def papers_path(config: dict):
     return os.path.join(data_dir(config), "papers.json")
 

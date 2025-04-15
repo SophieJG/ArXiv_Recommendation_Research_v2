@@ -40,7 +40,7 @@ class DualModel(BaseModel):
             return np.maximum(pred1, pred2)
 
     def fit(self, train_samples: list, validation_samples: list):
-        # No training needed for cocitation model
+        # No training needed for Dual model
         print("Models in Dual model have already been trained - skipping")
         pass
 

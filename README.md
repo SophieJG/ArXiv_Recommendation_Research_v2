@@ -202,6 +202,8 @@ The `Data` class internally holds three data structures:
 1. A dictionary of authors info. The key is `author_id`
 1. A dictionary of papers info. The key is `paper_id`
 
+For the papers info, embeddings data is not included in the dictionary to save memory. Embeddings should be loaded from within the model that is using them.
+
 In order to guarantee consistency, the author info is "shifted" in time to the year the paper was published. In practice, that implies removing all publications by the author that proceed (are after) the paper.
 
 For utility function purposes, the data should be accessed using the `Data:get_fold()` function which returns a list of samples. Each sample contains the unstrucuted paper and author info. For ranking method investigations, when the full matrix of papers and authors is needed, the proper manner for data access is by using the `Data:get_ranking_papers()` and `Data:get_ranking_authors()` methods.

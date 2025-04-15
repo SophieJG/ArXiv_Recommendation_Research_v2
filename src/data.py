@@ -84,7 +84,9 @@ that implies removing all publications by the author that proceed (are after) th
             author_id = str(row.author)
             self._process_paper(new_sample, paper_id)
             self._process_author(new_sample, author_id, new_sample["year"])
-            samples.append(new_sample)
+            if len(new_sample["author"]["papers"]) > 0:
+                # make sure the author has at least one paper published before the target paper
+                samples.append(new_sample)
         # print(samples)
         return samples
 
@@ -95,7 +97,13 @@ that implies removing all publications by the author that proceed (are after) th
         ]
     
     def get_ranking_authors(self, paper_year: int, start_idx: int, end_idx: int):
+        # TODO: have assertion that all authors have papers before paper_year?
         return [
             self._process_author({}, str(author_id), paper_year)
             for author_id in self.ranking["authors"][start_idx: end_idx]
         ]
+        # # Filter out authors with no papers before paper_year
+        # # This is filtered elsewhere now
+        # return [ 
+        #     sample for sample in unfiltered_samples if len(sample["author"]["papers"]) > 0
+        # ]
