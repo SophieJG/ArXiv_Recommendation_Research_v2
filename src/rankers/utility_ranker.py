@@ -22,4 +22,3 @@ Rank the papers according to paper-author utility
         for author, row in tqdm(utility.iterrows(), "Ranking", len(utility)):
             ranked[author] = list(row.sort_values(ascending=False, kind="stable").keys())[:self.items_to_rank]
         return ranked
-        

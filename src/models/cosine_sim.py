@@ -26,7 +26,7 @@ class CosineSimilarityModel(BaseModel):
             if "embedding" in p and p["embedding"] is not None:
                 author_embeddings.append(p["embedding"])
         if len(author_embeddings) == 0:
-            return None
+            return [placeholder_embed]
         return np.array(author_embeddings)
 
     @staticmethod
@@ -43,9 +43,9 @@ class CosineSimilarityModel(BaseModel):
         for sample in tqdm(samples, "CosineSim: samples -> arrays"):
             author_embed_list = self._process_author(sample)
             paper_embed = self._process_paper(sample)
-            if author_embed_list is None:
-                # print("author_embed_list is empty for sample: ", sample)
-                author_embed_list = [placeholder_embed]
+            # if author_embed_list is None:
+            #     # print("author_embed_list is empty for sample: ", sample)
+            #     author_embed_list = [placeholder_embed]
             author_embeddings.append(author_embed_list)
             paper_embeddings.append(paper_embed)
             labels.append(sample["label"])
