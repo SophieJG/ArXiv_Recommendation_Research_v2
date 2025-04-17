@@ -14,6 +14,8 @@ from models.base_model import BaseModel
 
 
 class CosineSimilarityModel(BaseModel):
+    placeholder_count = 0
+
     def __init__(self, params: dict) -> None:
         self.model = None
         self.threshold = params.get('threshold', 0.5)
@@ -26,6 +28,7 @@ class CosineSimilarityModel(BaseModel):
             if "embedding" in p and p["embedding"] is not None:
                 author_embeddings.append(p["embedding"])
         if len(author_embeddings) == 0:
+            CosineSimilarityModel.placeholder_count += 1
             return [placeholder_embed]
         return np.array(author_embeddings)
 
