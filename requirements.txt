@@ -8,3 +8,7 @@ scikit-learn
 catboost
 pyyaml
 argparse
+torch
+transformers
+adapters
+chromadb
