@@ -34,6 +34,7 @@ Main class used to store data for training and evaluation purpose. See the readm
                 continue
             paper = self.papers[str(id)]
             if paper["year"] < paper_year:
+                paper["paper_id"] = int(id) # add paper_id to the paper data
                 author_papers.append(paper)
         new_sample["author"] = {
             "id": author_id,
@@ -52,6 +53,8 @@ Main class used to store data for training and evaluation purpose. See the readm
         new_sample["title"] = kaggle_paper_data["title"]
         new_sample["categories"] = list(kaggle_paper_data["categories"])
         new_sample["year"] = kaggle_paper_data["year_updated"]
+        # include id of the paper in the new sample
+        new_sample["paper_id"] = int(paper_id)
         return new_sample
 
     def _parse_fold(self, fold_str: str):
@@ -85,7 +88,7 @@ that implies removing all publications by the author that proceed (are after) th
             self._process_paper(new_sample, paper_id)
             self._process_author(new_sample, author_id, new_sample["year"])
             if len(new_sample["author"]["papers"]) > 0:
-                # make sure the author has at least one paper published before the target paper
+                # only add sample if the author has papers published before the arxiv paper
                 samples.append(new_sample)
         # print(samples)
         return samples
