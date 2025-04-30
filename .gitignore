@@ -4,4 +4,4 @@ src/__pycache__/
 Data/
 catboost_info/
 playground.ipynb
-
+venv/

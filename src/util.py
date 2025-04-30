@@ -31,6 +31,10 @@ def kaggle_data_path(config: dict):
     return os.path.join(data_dir(config), "kaggle_data.parquet")
 
 
+def embedding_db_dir(config: dict):
+    return os.path.join(config["data"]["vector_db_dir"])
+
+
 def passthrough_func(x):
     return x
 
@@ -42,3 +46,80 @@ vectors are normalized to have an l2 norm of 1.
 """
     embeddings = np.vstack(embedding)
     return np.mean(np.matmul(embeddings, embeddings.transpose()))
+
+
+class EmbeddingDatabase:
+    def __init__(self, db_dir: str, collection_name: str = "paper_embeddings"):
+        """
+        Initialize an embedding database using ChromaDB.
+        
+        Args:
+            db_dir: Directory where the ChromaDB data will be stored
+            collection_name: Name of the collection to store embeddings in
+        """
+        import chromadb
+        os.makedirs(db_dir, exist_ok=True)
+        self.client = chromadb.PersistentClient(path=db_dir)
+        self.collection = self.client.get_or_create_collection(
+            name=collection_name,
+            metadata={"description": "Paper embeddings database"}
+        )
+        
+    def store_embeddings(self, paper_ids: list, embeddings: list):
+        """
+        Store embeddings for a list of papers.
+        
+        Args:
+            paper_ids: List of paper IDs (strings)
+            embeddings: List of embedding vectors (lists of floats)
+        """
+        # Convert embeddings to lists if they're numpy arrays
+        embeddings = [emb.tolist() if hasattr(emb, 'tolist') else emb for emb in embeddings]
+        
+        # Create metadata for each paper
+        metadatas = [{"paper_id": pid} for pid in paper_ids]
+        
+        # Store in ChromaDB
+        self.collection.upsert(
+            ids=paper_ids,
+            embeddings=embeddings,
+            metadatas=metadatas
+        )
+        
+    def get_embeddings(self, paper_ids: list):
+        """
+        Retrieve embeddings for a list of papers.
+        
+        Args:
+            paper_ids: List of paper IDs to retrieve embeddings for
+            
+        Returns:
+            dict mapping paper IDs to their embeddings (as numpy arrays)
+        """
+        results = self.collection.get(
+            ids=paper_ids,
+            include=["embeddings"]
+        )
+        
+        # Convert to numpy arrays and create mapping
+        embeddings = {}
+        for i, pid in enumerate(results["ids"]):
+            embeddings[pid] = np.array(results["embeddings"][i])
+            
+        return embeddings
+        
+    def has_embedding(self, paper_id: str) -> bool:
+        """
+        Check if an embedding exists for a given paper ID.
+        
+        Args:
+            paper_id: ID of the paper to check
+            
+        Returns:
+            bool indicating if the embedding exists
+        """
+        try:
+            results = self.collection.get(ids=[paper_id])
+            return len(results["ids"]) > 0
+        except:
+            return False

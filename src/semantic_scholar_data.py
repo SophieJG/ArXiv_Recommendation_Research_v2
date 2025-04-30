@@ -144,7 +144,7 @@ Arguments:
 
 def process_references(config: dict):
     """
-    Using the list of corpus ids all the unified papers (author and Arxiv) we query the `citations` table to get corpus ids for all
+    Using the list of corpus ids of all the unified papers (author and Arxiv) we query the `citations` table to get corpus ids for all
     referenced papers. This includes all referenced papers, disregarding publication year.
     Once the unified papers are updated with references, the file saving unified papers without references is removed.
     """
@@ -790,40 +790,43 @@ def process_paper_embedding(config: dict):
     Using the list of corpus ids of the Arxiv papers we query the `embedding` table to get spector2 embedding for each paper.
     """
     print("\nLoading embedding info from Semantic Scholar")
-    embedding_papers_path = os.path.join(tmp_data_dir(config), "papers_embedding.json")
-    if os.path.exists(embedding_papers_path):
-        print(f"{embedding_papers_path} exists - Skipping")
-        return
-
+    # NOTE: Right now there's not a great way to check if the embeddings are already processed, or if the database contains different embeddings.
+    # TODO: Add a flag to decide whether to clear the database at the beginning of the function
+    
+    # Initialize embedding database
+    from util import EmbeddingDatabase
+    embedding_db = EmbeddingDatabase(
+        db_dir=config["data"]["vector_db_dir"],
+        collection_name=config["data"]["vector_collection_name"]
+    )
+    
+    # Load paper info
     paper_info_path = os.path.join(data_dir(config), "papers.json")
     paper_info = json.load(open(paper_info_path))
-    # corpus ids for arxiv papers
-    arxiv_papers = [id for id in paper_info.keys()]
+    papers = [id for id in paper_info.keys()]
 
+    # Filter out papers that already have embeddings - doesn't really matter, it will take just as long
+    # papers = [id for id in all_papers if not embedding_db.has_embedding(str(id))]
+    
+    # Process embeddings in parallel
     res = multi_file_query(
         os.path.join(config["data"]["semantic_scholar_path"], "embeddings-specter_v2", "*.gz"),
         _process_embedding_papers_inner,
         config["data"]["n_jobs"],
-        ids=arxiv_papers
+        ids=papers
     )
-
-    # multi_file_query returns a list of dicts. Merge it to a single dict. Note that a single paper can have citations in multiple
-    # res files so the dictionaries needs to be "deep" merged
-    embedding_papers = {}
-    for d in tqdm(res, "merging embedding files"):
-        embedding_papers.update(d)
-    # print("embedding_papers:\n", embedding_papers）
-
-
-    for paper_id, paper in paper_info.items():
-        if paper_id in embedding_papers:
-            paper["embedding"] = embedding_papers[paper_id]
-
-    print(f"Saving to {embedding_papers_path}")
-    with open(embedding_papers_path, 'w') as f:
-        json.dump(embedding_papers, f, indent=4)
     
-
+    # Merge results and store in ChromaDB
+    paper_embeddings = {}
+    for d in tqdm(res, "merging embedding files"):
+        paper_embeddings.update(d)
+    
+    # Store embeddings in ChromaDB
+    paper_ids = list(paper_embeddings.keys())
+    embeddings = list(paper_embeddings.values())
+    embedding_db.store_embeddings(paper_ids, embeddings)
+    
+    # Save updated paper info
     print(f"Saving to {paper_info_path}")
     with open(paper_info_path, 'w') as f:
         json.dump(paper_info, f, indent=4)

@@ -2,6 +2,8 @@ arxiv_json_path: "/share/garg/arxiv_kaggle/arxiv-metadata-oai-snapshot.json"  # 
 semantic_scholar_path: "/share/garg/semantic_scholar_Nov2024/2024-11-05"  # Path to the data downloaded from Semantic Scholar
 
 base_path: "/share/garg/arxiv_runs/marco_10/"  # Path to store data and models
+vector_db_dir: "/share/garg/arxiv_vector_databases/spector_store"  # Path to the vector database. This is used to efficiently store the embeddings of the papers
+vector_collection_name: "Semantic_Scholar_embeddings" # Name of the collection in the vector database where the embeddings are stored
 test_is_2020: True  # When this flag is set to true the test set is the year 2020, validation is 2019 and the rest is training. Otherwise the splits are random
 start_year: 2011  # papers included in datasets are all papers where year >= `start_year`
 end_year: 2021  # papers included in datasets are all papers where year < `end_year`
