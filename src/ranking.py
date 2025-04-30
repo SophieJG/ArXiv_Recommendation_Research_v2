@@ -48,7 +48,6 @@ the predictions are calculated in batches of `batch_size` predictions
         utility.append(model.predict_proba_ranking(papers, authors))
     utility = pd.DataFrame(
         np.vstack(utility),
-        # TODO TODO TODO: I need to have the authors only be authors who published papers before test year
         index=data.ranking["authors"],
         columns=data.ranking["papers"]
     )
@@ -106,19 +105,33 @@ Evaluate the ranker on the test fold
     
     # Preprocessing needed in order to calculate standard ranking metrics e.g. precision top k, hit top k
     paper_ranks = []
+    author_to_paper_ranks = {}
     for author, paper in zip(labels["author"], labels["paper"]):
         author_ranked = ranked[author]
         assert len(author_ranked) == items_to_rank
-        paper_ranks.append(safe_index(author_ranked, paper))
+        rank = safe_index(author_ranked, paper)
+        paper_ranks.append(rank)
+        
+        # Store all ranks for each author to calculate MRR correctly
+        if author not in author_to_paper_ranks:
+            author_to_paper_ranks[author] = []
+        author_to_paper_ranks[author].append(rank)
     
     # Calculate precision top k
     top_k_prec = [[] for _ in range(len(top_k))]
-    mrr = []
     for r in paper_ranks:
-        mrr.append(1 / (r + 1))
         for idx, k in enumerate(top_k):
             top_k_prec[idx].append(r < k)
-
+    
+    # Calculate MRR properly - use the first relevant item for each author
+    mrr_values = []
+    for author, ranks in author_to_paper_ranks.items():
+        min_rank = min(ranks)  # Get rank of first relevant item
+        if min_rank < items_to_rank:
+            mrr_values.append(1 / (min_rank + 1))
+        else:
+            mrr_values.append(0)  # If no relevant items found
+    
     # Calculate hit metrics. Defined as: for every author did we recommend a paper that was interacted with in the top k
     author_min_hit = {}
     for author, paper in zip(labels["author"], labels["paper"]):
@@ -135,9 +148,12 @@ Evaluate the ranker on the test fold
             if min_hit < k:
                 top_k_hit[idx] += 1
     
-    # Diversity is defined as 1 minus the mean cosine distance between the top-k recommended papers - higher diversity implies
+    # Diversity is defined as 1 minus the mean similarity score between the top-k recommended papers - higher diversity implies
     # a more diverse set.
     if paper_embeddings:
+        # TODO: improve diversity score to calculate a mean similarity score, where the
+        # similarity score depends on the embedding model used
+        # TODO: implement this in a way where not all the embeddings have to be loaded at once
         diversity_k = top_k
         diversity = []
         for k in diversity_k:
@@ -148,7 +164,7 @@ Evaluate the ranker on the test fold
             diversity.append(1. - np.mean(authors_diversity))
 
     metrics = {
-        f"MRR (clipped to {items_to_rank})": np.mean(mrr),
+        f"MRR": np.mean(mrr_values),  # Calculated without clipping
         **{f"Precision @ {k}": np.mean(top_k_prec[idx]) for idx, k in enumerate(top_k)},
         **{f"Hit rate @ {k}": top_k_hit[idx] / len(author_min_hit) for idx, k in enumerate(top_k)},
     }
