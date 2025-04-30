@@ -9,6 +9,7 @@ from sklearn.metrics import classification_report
 import numpy as np
 import joblib
 from placeholder_embed import placeholder_embed
+from util import EmbeddingDatabase
 
 from models.base_model import BaseModel
 
@@ -17,21 +18,53 @@ class CosineSimilarityModel(BaseModel):
     def __init__(self, params: dict) -> None:
         self.model = None
         self.threshold = params.get('threshold', 0.5)
+        # Initialize embedding database
+        self.embedding_db = EmbeddingDatabase(
+            db_dir=params.get('vector_db_dir'),
+            collection_name=params.get('vector_collection_name')
+        )
 
-    @staticmethod
-    def _process_author(sample: dict):
+
+    def _process_author(self, sample: dict):
         # Get list of embeddings from author's papers
         author_embeddings = []
+        paper_ids = []
+        
+        # First collect all paper IDs
         for p in sample["author"]["papers"]:
-            if "embedding" in p and p["embedding"] is not None:
-                author_embeddings.append(p["embedding"])
+            paper_id = str(p.get("paper_id"))
+            if paper_id:
+                paper_ids.append(paper_id)
+        
+        if not paper_ids:
+            return None
+            
+        # Try to get embeddings from ChromaDB
+        try:
+            embeddings = self.embedding_db.get_embeddings(paper_ids)
+            for paper_id in paper_ids:
+                if paper_id in embeddings:
+                    author_embeddings.append(embeddings[paper_id])
+        except Exception as e:
+            print(f"Error getting embeddings for author papers: {e}")
+            
         if len(author_embeddings) == 0:
             return None
         return np.array(author_embeddings)
 
-    @staticmethod
-    def _process_paper(sample: dict):
-        return sample["embedding"]
+    def _process_paper(self, sample: dict):
+        # Try to get embedding from ChromaDB
+        paper_id = str(sample.get("paper_id"))
+        if paper_id:
+            try:
+                embedding = self.embedding_db.get_embeddings([paper_id])
+                if paper_id in embedding:
+                    return embedding[paper_id]
+            except Exception as e:
+                print(f"Error getting embedding for paper {paper_id}: {e}")
+        # If no embedding found, use placeholder
+        print(f"WARNING: No embedding found for target paper {paper_id} (corpus id)")
+        return placeholder_embed
 
     def _samples_to_arrays(self, samples: list):
         """Convert samples to paper and author embedding arrays"""
@@ -40,23 +73,19 @@ class CosineSimilarityModel(BaseModel):
         labels = []
         # print("samples: ", samples[:5])
         
+        max_similarities = []
+        labels = []
         for sample in tqdm(samples, "CosineSim: samples -> arrays"):
             author_embed_list = self._process_author(sample)
             paper_embed = self._process_paper(sample)
             if author_embed_list is None:
-                # print("author_embed_list is empty for sample: ", sample)
                 author_embed_list = [placeholder_embed]
-            author_embeddings.append(author_embed_list)
-            paper_embeddings.append(paper_embed)
-            labels.append(sample["label"])
-        # print("paper_embeddings: ", paper_embeddings[:5])
-        # print("author_embeddings: ", author_embeddings[:5])
-        max_similarities = []
-        for target_emb, author_emb_list in zip(paper_embeddings, author_embeddings):
+            
             # Compute cosine similarity between target and each of author's papers
-            sims = cosine_similarity([target_emb], author_emb_list)[0]
+            sims = cosine_similarity([paper_embed], author_embed_list)[0]
             max_sim = np.max(sims)
             max_similarities.append(max_sim)
+            labels.append(sample["label"])
 
         X = np.array(max_similarities).reshape(-1, 1)
         y = np.array(labels)
@@ -67,6 +96,9 @@ class CosineSimilarityModel(BaseModel):
         """
         Use training set to find optimal threshold, validate on validation set
         """
+        # print("Cosine Similarity model does not require training - no parameters to fit")
+        # return
+        # Old implementation with LogisticRegression
         self.model = LogisticRegression(max_iter=1000)
         X, y = self._samples_to_arrays(train_samples)
         self.model.fit(X, y)
@@ -92,7 +124,9 @@ class CosineSimilarityModel(BaseModel):
 
     def predict_proba(self, samples: list):
         """Run inference on a list of samples"""
-
+        # X, _ = self._samples_to_arrays(samples)
+        # return X
+        # Old implementation with LogisticRegression
         assert self.model is not None
         X, _ = self._samples_to_arrays(samples)
         return self.model.predict_proba(X)[:, 1]

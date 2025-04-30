@@ -4,8 +4,10 @@ from data import Data
 from models.catboost import CatboostModel
 from models.cocitation_sigmoid import CocitationSigmoidModel
 from models.cocitation_logistic import CocitationLogistic
+from models.specter2_basic import Specter2Basic
 from models.dual_model import DualModel
-from util import models_dir
+from util import models_dir, model_version_path
+from models.cosine_sim import CosineSimilarityModel
 
 from sklearn.metrics import average_precision_score, roc_auc_score, accuracy_score
 
@@ -13,11 +15,30 @@ from sklearn.metrics import average_precision_score, roc_auc_score, accuracy_sco
 def get_model(config):
     assert config["model"] is not None, "Model config is required"
     model_type = config["model"]["model"]
+    model_params = config["model"]["params"]
+
     match model_type:
-        case "catboost": return CatboostModel(config["model"]["params"])
-        case "cocitation_sigmoid": return CocitationSigmoidModel(config["model"]["params"])
-        case "cocitation_logistic": return CocitationLogistic(config["model"]["params"])
-        case "dual_model": return DualModel(config["model"]["params"])
+        case "catboost":
+            return CatboostModel(model_params)
+        case "cocitation_sigmoid":
+            return CocitationSigmoidModel(model_params)
+        case "cocitation_logistic":
+            return CocitationLogistic(model_params)
+        case "dual_model":
+            return DualModel(model_params)
+        case "specter2_basic":
+            params = model_params.copy()
+            params["load_path"] = model_version_path((
+                models_dir(config),
+                config["model"]["model"],
+                config["model"]["version"]
+            ))
+            return Specter2Basic(params)
+        case "cosine_sim":
+            params = model_params.copy()
+            params["vector_db_dir"] = config["data"]["vector_db_dir"]
+            params["vector_collection_name"] = config["data"]["vector_collection_name"]
+            return CosineSimilarityModel(params)
         case _:
             raise ValueError(f"Unknown model type: {model_type}")
 
