@@ -875,3 +875,139 @@ def process_paper_embedding(config: dict):
     print(f"Saving to {paper_info_path}")
     with open(paper_info_path, 'w') as f:
         json.dump(paper_info, f, indent=4)
+
+
+def process_paper_embedding_queue(config: dict):
+    """
+    Using the list of corpus ids of the Arxiv papers we query the `embedding` table to get spector2 embedding for each paper.
+    This implementation uses a producer-consumer pattern to process files in parallel while keeping memory usage bounded.
+    """
+    # NOTE: This has not been tested yet
+    print("\nLoading embedding info from Semantic Scholar")
+    
+    # Initialize embedding database
+    from util import EmbeddingDatabase
+    embedding_db = EmbeddingDatabase(
+        db_dir=config["data"]["vector_db_dir"],
+        collection_name=config["data"]["vector_collection_name"]
+    )
+    
+    # Load paper info
+    paper_info_path = os.path.join(data_dir(config), "papers.json")
+    paper_info = json.load(open(paper_info_path))
+    papers = set(paper_info.keys())  # Convert to set for O(1) lookup
+    
+    # Get list of files to process
+    files = glob.glob(os.path.join(
+        config["data"]["semantic_scholar_path"], 
+        "embeddings-specter_v2", 
+        "*.gz"
+    ))
+    
+    # Create a queue for embeddings
+    from queue import Queue
+    from threading import Thread
+    import time
+    
+    embedding_queue = Queue(maxsize=1000)  # Limit queue size to control memory usage
+    stop_event = False
+    total_embeddings = 0
+    
+    def consumer():
+        """Consumer thread that reads from queue and writes to database in batches."""
+        nonlocal total_embeddings
+        current_batch_ids = []
+        current_batch_embeddings = []
+        
+        while True:
+            try:
+                # Get embedding from queue with timeout to allow checking stop_event
+                item = embedding_queue.get(timeout=1.0)
+                if item is None:  # Signal to stop
+                    break
+                    
+                paper_id, embedding = item
+                current_batch_ids.append(paper_id)
+                current_batch_embeddings.append(embedding)
+                
+                # If batch is full, store it
+                if len(current_batch_ids) >= embedding_db.max_batch_size:
+                    embedding_db.store_embeddings(
+                        current_batch_ids, 
+                        current_batch_embeddings
+                    )
+                    total_embeddings += len(current_batch_ids)
+                    current_batch_ids = []
+                    current_batch_embeddings = []
+                    
+                embedding_queue.task_done()
+                
+            except Queue.Empty:
+                if stop_event:
+                    break
+                continue
+            except Exception as e:
+                print(f"Error in consumer thread: {e}")
+                continue
+        
+        # Store any remaining embeddings
+        if current_batch_ids:
+            embedding_db.store_embeddings(
+                current_batch_ids, 
+                current_batch_embeddings
+            )
+            total_embeddings += len(current_batch_ids)
+    
+    def process_file(path: str, paper_ids: set):
+        """
+        Process a single embedding file and put embeddings into the queue.
+        """
+        try:
+            with gzip.open(path, "rt", encoding="UTF-8") as fin:
+                for line in fin:
+                    try:
+                        paper = json.loads(line)
+                        paper_id = str(paper["corpusid"])
+                        
+                        if paper_id not in paper_ids:
+                            continue
+                            
+                        # Put embedding in queue, blocking if queue is full
+                        embedding_queue.put((
+                            paper_id,
+                            ast.literal_eval(paper["vector"])
+                        ))
+                            
+                    except (json.JSONDecodeError, KeyError, ValueError) as e:
+                        print(f"Error processing line in {path}: {e}")
+                        continue
+                    
+        except Exception as e:
+            print(f"Error processing file {path}: {e}")
+    
+    # Start consumer thread
+    consumer_thread = Thread(target=consumer, daemon=True)
+    consumer_thread.start()
+    
+    try:
+        # Process files in parallel
+        print("Processing files in parallel...")
+        Parallel(n_jobs=config["data"]["n_jobs"])(
+            delayed(process_file)(f, papers) for f in tqdm(files, "processing embedding files")
+        )
+        
+        # Signal consumer to stop
+        stop_event = True
+        embedding_queue.put(None)
+        
+        # Wait for consumer to finish
+        consumer_thread.join()
+        
+    except Exception as e:
+        print(f"Error in main thread: {e}")
+        stop_event = True
+        embedding_queue.put(None)
+        consumer_thread.join()
+        raise e
+        
+    print(f"Processed {total_embeddings} embeddings from {len(files)} files")
