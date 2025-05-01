@@ -134,15 +134,19 @@ class CosineSimilarityModel(BaseModel):
     def predict_proba_ranking(self, papers: list, authors: list):
         """Run inference on cartesian product of papers and authors"""
         paper_embeddings = np.array([self._process_paper(p) for p in papers])
-        author_embeddings = [self._process_author(a) for a in authors]
+        author_embeddings = []
+        for a in authors:
+            author_emb = self._process_author(a)
+            if author_emb is None:
+                author_emb = [placeholder_embed]  # Use placeholder if no embeddings found
+            author_embeddings.append(author_emb)
         
         # Calculate similarities for each paper-author pair
         utility = np.zeros((len(authors), len(papers)))
         for i, author_embs in enumerate(author_embeddings):
-            if len(author_embs) > 0:
-                for j, paper_emb in enumerate(paper_embeddings):
-                    sims = cosine_similarity(paper_emb.reshape(1,-1), author_embs)
-                    utility[i,j] = np.max(sims)
+            for j, paper_emb in enumerate(paper_embeddings):
+                sims = cosine_similarity(paper_emb.reshape(1,-1), author_embs)
+                utility[i,j] = np.max(sims)
         return utility
     
     def _save(self, path: str):
