@@ -64,10 +64,11 @@ class EmbeddingDatabase:
             name=collection_name,
             metadata={"description": "Paper embeddings database"}
         )
+        self.max_batch_size = 5000  # ChromaDB's limit is 5461
         
     def store_embeddings(self, paper_ids: list, embeddings: list):
         """
-        Store embeddings for a list of papers.
+        Store embeddings for a list of papers in batches to handle large datasets.
         
         Args:
             paper_ids: List of paper IDs (strings)
@@ -76,15 +77,23 @@ class EmbeddingDatabase:
         # Convert embeddings to lists if they're numpy arrays
         embeddings = [emb.tolist() if hasattr(emb, 'tolist') else emb for emb in embeddings]
         
-        # Create metadata for each paper
-        metadatas = [{"paper_id": pid} for pid in paper_ids]
-        
-        # Store in ChromaDB
-        self.collection.upsert(
-            ids=paper_ids,
-            embeddings=embeddings,
-            metadatas=metadatas
-        )
+        # Process in batches
+        for i in range(0, len(paper_ids), self.max_batch_size):
+            batch_ids = paper_ids[i:i + self.max_batch_size]
+            batch_embeddings = embeddings[i:i + self.max_batch_size]
+            batch_metadatas = [{"paper_id": pid} for pid in batch_ids]
+            
+            try:
+                # Store in ChromaDB
+                self.collection.upsert(
+                    ids=batch_ids,
+                    embeddings=batch_embeddings,
+                    metadatas=batch_metadatas
+                )
+            except Exception as e:
+                print(f"Error storing batch {i//self.max_batch_size + 1}/{(len(paper_ids) + self.max_batch_size - 1) // self.max_batch_size}: {e}")
+                print(f"Batch size: {len(batch_ids)}")
+                raise e
         
     def get_embeddings(self, paper_ids: list):
         """

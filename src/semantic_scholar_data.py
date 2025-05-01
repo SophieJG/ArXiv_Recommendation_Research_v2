@@ -763,8 +763,8 @@ Arguments:
 
 def _process_embedding_papers_inner(path: str, ids: list):
     """
-A helper function to process a single SemS papers chunk file. Should only be called through process_papers. Go
-over all papers in the file and returns the info of all papers with id in `ids`
+A helper function to process a single SemS papers chunk file. Should only be called through process_paper_embedding. Go
+over all papers in the file and returns the vectors of all papers with id in `ids` that have a vector in the file.
 
 Arguments:
     path: the file to load and process
@@ -788,10 +788,9 @@ Arguments:
 def process_paper_embedding(config: dict):
     """
     Using the list of corpus ids of the Arxiv papers we query the `embedding` table to get spector2 embedding for each paper.
+    This implementation processes files sequentially to ensure memory safety.
     """
     print("\nLoading embedding info from Semantic Scholar")
-    # NOTE: Right now there's not a great way to check if the embeddings are already processed, or if the database contains different embeddings.
-    # TODO: Add a flag to decide whether to clear the database at the beginning of the function
     
     # Initialize embedding database
     from util import EmbeddingDatabase
@@ -803,28 +802,74 @@ def process_paper_embedding(config: dict):
     # Load paper info
     paper_info_path = os.path.join(data_dir(config), "papers.json")
     paper_info = json.load(open(paper_info_path))
-    papers = [id for id in paper_info.keys()]
-
-    # Filter out papers that already have embeddings - doesn't really matter, it will take just as long
-    # papers = [id for id in all_papers if not embedding_db.has_embedding(str(id))]
+    papers = set(paper_info.keys())  # Convert to set for O(1) lookup
     
-    # Process embeddings in parallel
-    res = multi_file_query(
-        os.path.join(config["data"]["semantic_scholar_path"], "embeddings-specter_v2", "*.gz"),
-        _process_embedding_papers_inner,
-        config["data"]["n_jobs"],
-        ids=papers
-    )
+    # Get list of files to process
+    files = glob.glob(os.path.join(
+        config["data"]["semantic_scholar_path"], 
+        "embeddings-specter_v2", 
+        "*.gz"
+    ))
     
-    # Merge results and store in ChromaDB
-    paper_embeddings = {}
-    for d in tqdm(res, "merging embedding files"):
-        paper_embeddings.update(d)
+    def process_file(path: str, paper_ids: set) -> int:
+        """
+        Process a single embedding file and store embeddings for matching papers.
+        Returns the number of embeddings processed.
+        """
+        current_batch_ids = []
+        current_batch_embeddings = []
+        processed_count = 0
+        
+        try:
+            with gzip.open(path, "rt", encoding="UTF-8") as fin:
+                for line in fin:
+                    try:
+                        paper = json.loads(line)
+                        paper_id = str(paper["corpusid"])
+                        
+                        if paper_id not in paper_ids:
+                            continue
+                            
+                        # Add to current batch
+                        current_batch_ids.append(paper_id)
+                        current_batch_embeddings.append(
+                            ast.literal_eval(paper["vector"])
+                        )
+                        
+                        # If batch is full, store it
+                        if len(current_batch_ids) >= embedding_db.max_batch_size:
+                            embedding_db.store_embeddings(
+                                current_batch_ids, 
+                                current_batch_embeddings
+                            )
+                            processed_count += len(current_batch_ids)
+                            current_batch_ids = []
+                            current_batch_embeddings = []
+                            
+                    except (json.JSONDecodeError, KeyError, ValueError) as e:
+                        print(f"Error processing line in {path}: {e}")
+                        continue
+                
+                # Store any remaining embeddings
+                if current_batch_ids:
+                    embedding_db.store_embeddings(
+                        current_batch_ids, 
+                        current_batch_embeddings
+                    )
+                    processed_count += len(current_batch_ids)
+                    
+        except Exception as e:
+            print(f"Error processing file {path}: {e}")
+            
+        return processed_count
     
-    # Store embeddings in ChromaDB
-    paper_ids = list(paper_embeddings.keys())
-    embeddings = list(paper_embeddings.values())
-    embedding_db.store_embeddings(paper_ids, embeddings)
+    # Process files sequentially
+    total_embeddings = 0
+    for file_path in tqdm(files, "Processing embedding files"):
+        embeddings_in_file = process_file(file_path, papers)
+        total_embeddings += embeddings_in_file
+        
+    print(f"Processed {total_embeddings} embeddings from {len(files)} files")
     
     # Save updated paper info
     print(f"Saving to {paper_info_path}")

@@ -47,6 +47,7 @@ def generate_paper_embeddings(config: dict):
     """
 Generate paper embeddings for all papers in the test set
 """
+    print("WARNING: This function is deprecated and could cost you significant disk memory. Are you sure you want to run it?")
     print("\nGenerating paper embeddings")
     output_path = os.path.join(
         model_version_path(models_dir(config), config["embedder"]["embedder"], config["embedder"]["version"]), 
@@ -63,5 +64,6 @@ Generate paper embeddings for all papers in the test set
     # Normalize embeddings
     embeddings = embeddings / np.sqrt(np.square(embeddings).sum(axis=1))[:, np.newaxis]
     paper_ids = np.array([paper["id"] for paper in papers])
+    # TODO: fix saving of embeddings (think about how to define the path)
     print(f"Saving to {output_path}")
     np.savez(output_path, paper_ids=paper_ids, embeddings=embeddings)
