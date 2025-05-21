@@ -103,19 +103,20 @@ class EmbeddingDatabase:
             paper_ids: List of paper IDs to retrieve embeddings for
             
         Returns:
-            dict mapping paper IDs to their embeddings (as numpy arrays)
+            tuple of (ids, embeddings) where:
+            - ids: numpy array of paper IDs that were found
+            - embeddings: numpy array of corresponding embeddings
         """
         results = self.collection.get(
             ids=paper_ids,
             include=["embeddings"]
         )
         
-        # Convert to numpy arrays and create mapping
-        embeddings = {}
-        for i, pid in enumerate(results["ids"]):
-            embeddings[pid] = np.array(results["embeddings"][i])
+        # Convert to numpy arrays
+        ids = np.array(results["ids"])
+        embeddings = np.array(results["embeddings"])
             
-        return embeddings
+        return ids, embeddings
         
     def has_embedding(self, paper_id: str) -> bool:
         """
