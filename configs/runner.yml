@@ -1,21 +1,21 @@
 data:
-  kaggle_json_to_parquet: True  # Prerequisite: None
-  process_papers: True  # Prerequisite: data/kaggle_json_to_parquet
-  process_citations: True  # Prerequisite: data/process_papers
-  process_citing_papers: True  # Prerequisite: data/process_citations
-  process_authors: True  # Prerequisite: data/process_citing_papers
-  get_abstracts: True  # Prerequisite: data/process_citing_papers
-  unify_papers: True  # Prerequisite: data/process_authors & data/get_abstracts
-  process_references: True  # Prerequisite: data/unify_papers
-  process_paper_embedding: True  # Prerequisite: data/process_references
-  generate_samples: True  # Prerequisite: data/process_references
+  kaggle_json_to_parquet: False  # Prerequisite: None
+  process_papers: False  # Prerequisite: data/kaggle_json_to_parquet
+  process_citations: False  # Prerequisite: data/process_papers
+  process_citing_papers: False  # Prerequisite: data/process_citations
+  process_authors: False  # Prerequisite: data/process_citing_papers
+  get_abstracts: False  # Prerequisite: data/process_citing_papers
+  unify_papers: False  # Prerequisite: data/process_authors & data/get_abstracts
+  process_references: False  # Prerequisite: data/unify_papers
+  process_paper_embedding: False  # Prerequisite: data/unify_papers. Only run this if you want to re-store the paper embeddings in chromadb
+  generate_samples: False  # Prerequisite: data/process_references
 paper_embedding:
   fit: False  # Prerequisite: data
 model:
-  train: True  # Prerequisite: data
-  eval: True  # Prerequisite: model/train
+  train: False  # Prerequisite: data
+  eval: False  # Prerequisite: model/train
 ranking:
-  generate_samples: True  # Prerequisite: data
-  generate_predictions: True  # Prerequisite: ranking/generate_samples & model/train
+  generate_samples: False  # Prerequisite: data
+  generate_predictions: False  # Prerequisite: ranking/generate_samples & model/train
   generate_paper_embeddings: False  # Prerequisite: ranking/generate_samples & paper_embedding/fit
   evaluate: True  # Prerequisite: ranking/generate_predictions & ranking/generate_paper_embeddings

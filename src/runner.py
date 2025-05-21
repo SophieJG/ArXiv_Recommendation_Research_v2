@@ -76,6 +76,6 @@ def runner(config: dict):
 
 if __name__ == '__main__':
     config = load_config()
-    # print("Running with config:\n", json.dumps(config, indent=4))
+    print("Running with config:\n", json.dumps(config, indent=4))
     runner(config)
 

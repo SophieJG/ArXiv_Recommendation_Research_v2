@@ -11,7 +11,8 @@ citation_years: 3  # In order to be considered a positive sample, a citation nee
 prepare_authors_data_batch_sizes: [100, 25, 5, 1]  # See src/data_queries.py:prepare_authors_data
 num_papers: 3 # Number of papers to include in the dataset. Use 0 to include all papers
 num_negative: 1  # Number of negative samples for each paper
-max_author_papers: 10  # Drop authors with more publications than `max_author_papers`. We believe that these result from errors in Semantic Scholar's name disambiguation logic
+num_negative_ranking: 10  # Number of negative samples for each author in the ranking task
+max_author_papers: 500  # Drop authors with more publications than `max_author_papers`. We believe that these result from errors in Semantic Scholar's name disambiguation logic
 n_jobs: 50  # How many cores to use when querying data
 
 # Ranking params
