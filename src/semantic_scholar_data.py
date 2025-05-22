@@ -784,8 +784,24 @@ Arguments:
             paper_embeddings[str(j["corpusid"])] = ast.literal_eval(j["vector"])
     return paper_embeddings
 
-
 def process_paper_embedding(config: dict):
+    """
+    Process the paper embeddings for the given configuration. 
+    If no configuration is provided, the basic implementation is used.
+    """
+    if "embedding_type" not in config["data"]:
+        config["data"]["embedding_type"] = "basic"
+    match config["data"]["embedding_type"].lower():
+        case "basic":
+            process_paper_embedding_basic(config)
+        case "queue":
+            process_paper_embedding_queue(config)
+        case "gte":
+            process_paper_embedding_gte(config)
+        case _:
+            raise ValueError(f"Invalid embedding type: {config['data']['embedding_type']}")
+
+def process_paper_embedding_basic(config: dict):
     """
     Using the list of corpus ids of the Arxiv papers we query the `embedding` table to get spector2 embedding for each paper.
     This implementation processes files sequentially to ensure memory safety.
@@ -793,7 +809,7 @@ def process_paper_embedding(config: dict):
     print("\nLoading embedding info from Semantic Scholar")
     
     # Initialize embedding database
-    from util import EmbeddingDatabase
+    from embedding_database import EmbeddingDatabase
     embedding_db = EmbeddingDatabase(
         db_dir=config["data"]["vector_db_dir"],
         collection_name=config["data"]["vector_collection_name"]
@@ -886,7 +902,7 @@ def process_paper_embedding_queue(config: dict):
     print("\nLoading embedding info from Semantic Scholar")
     
     # Initialize embedding database
-    from util import EmbeddingDatabase
+    from embedding_database import EmbeddingDatabase
     embedding_db = EmbeddingDatabase(
         db_dir=config["data"]["vector_db_dir"],
         collection_name=config["data"]["vector_collection_name"]
@@ -1011,3 +1027,66 @@ def process_paper_embedding_queue(config: dict):
         raise e
         
     print(f"Processed {total_embeddings} embeddings from {len(files)} files")
+
+
+def process_paper_embedding_gte(config: dict):
+    """
+    Generate embeddings for papers using General Text Embeddings (GTE) model
+    via the sentence-transformers library.
+    """
+    print("\nGenerating GTE embeddings for papers")
+    
+    # Initialize embedding database
+    from embedding_database import EmbeddingDatabase
+    embedding_db = EmbeddingDatabase(
+        db_dir=config["data"]["vector_db_dir"],
+        collection_name=config["data"]["vector_collection_name"]
+    )
+    
+    # Load paper info
+    paper_info_path = os.path.join(data_dir(config), "papers.json")
+    paper_info = json.load(open(paper_info_path))
+    
+    # Load GTE model
+    from sentence_transformers import SentenceTransformer
+    gte_model_name = config["data"].get("gte_model_name", "thenlper/gte-base")
+    model = SentenceTransformer(gte_model_name)
+    
+    # Process papers in batches
+    batch_size = config["data"].get("embedding_batch_size", 100)
+    papers_processed = 0
+    paper_ids = list(paper_info.keys())
+    
+    for i in tqdm(range(0, len(paper_ids), batch_size), "Processing GTE embeddings", miniters=max(1, len(paper_ids) // 100)):
+        batch_ids = paper_ids[i:i+batch_size]
+        batch_texts = []
+        valid_ids = []
+        
+        # Prepare texts from paper titles and abstracts
+        for pid in batch_ids:
+            paper = paper_info[pid]
+            title = paper.get("title", "")
+            abstract = paper.get("abstract", "")
+            
+            if not title and not abstract:
+                continue
+                
+            text = "Title: " + title
+            if abstract:
+                text += " Abstract: " + abstract
+                
+            batch_texts.append(text)
+            valid_ids.append(pid)
+        
+        if not batch_texts:
+            continue
+            
+        # Generate embeddings with sentence-transformers
+        batch_embeddings = model.encode(batch_texts, show_progress_bar=False)
+        
+        # Store embeddings
+        embedding_db.store_embeddings(valid_ids, batch_embeddings)
+        papers_processed += len(valid_ids)
+        print(f"Processed {papers_processed}/{len(paper_ids)} papers", end="\r")
+        
+    print(f"\nCompleted processing {papers_processed} papers with GTE embeddings")
