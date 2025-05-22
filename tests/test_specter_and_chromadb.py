@@ -18,7 +18,7 @@ def test_chromadb_save_and_load():
     
     try:
         # Initialize EmbeddingDatabase
-        from src.util import EmbeddingDatabase
+        from src.embedding_database import EmbeddingDatabase
         embedding_db = EmbeddingDatabase(db_dir=db_dir, collection_name="test_coll")
         
         # Test data

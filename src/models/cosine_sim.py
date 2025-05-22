@@ -9,7 +9,7 @@ from sklearn.metrics import classification_report
 import numpy as np
 import joblib
 from placeholder_embed import placeholder_embed
-from util import EmbeddingDatabase
+from embedding_database import EmbeddingDatabase
 from typing import List, Dict, Optional, Tuple
 from functools import lru_cache
 

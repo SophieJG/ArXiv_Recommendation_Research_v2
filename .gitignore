@@ -5,3 +5,4 @@ Data/
 catboost_info/
 playground.ipynb
 venv/
+.vscode/
