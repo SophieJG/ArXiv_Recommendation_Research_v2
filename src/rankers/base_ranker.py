@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-
+from tqdm import tqdm
 
 class BaseRanker:
     def __init__(
@@ -13,7 +13,8 @@ class BaseRanker:
     def rank(
         self,
         utility: pd.DataFrame,
-        paper_embeddings: dict
+        paper_embeddings: dict,
+        disable_tqdm: bool = False
     ):
         raise NotImplementedError("rank for BaseRanker must be overloaded")
 
@@ -50,7 +51,7 @@ class BaseRanker:
         # Initialize all_papers after converting columns to strings
         all_papers = set(utility.columns)
         
-        for author in utility.index:
+        for author in tqdm(utility.index, "Ranking with sampled negatives", miniters=max(1, len(utility) // 100)):
             # Skip authors with no positive papers
             if author not in author_to_positive_papers or not author_to_positive_papers[author]:
                 continue
@@ -70,9 +71,11 @@ class BaseRanker:
             
             # Create a subset utility matrix with just the sampled papers
             sampled_papers = [sampled_positive] + list(sampled_negatives)
+            # Randomize the order to avoid bias from stable sorting when there are ties
+            rng.shuffle(sampled_papers)
             local_utility = utility.loc[[author], sampled_papers]
             
             # Use the ranker's regular rank method to rank these sampled papers
-            local_ranked[author] = self.rank(local_utility, paper_embeddings)[author]
+            local_ranked[author] = self.rank(local_utility, paper_embeddings, disable_tqdm=True)[author]
             
         return local_ranked, sampled_positives

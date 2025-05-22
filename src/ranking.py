@@ -325,7 +325,7 @@ def evaluate_ranker(config: dict):
                 diversity.append(0.0) # Or np.nan, depending on desired behavior for missing data
 
     metrics = {
-        f"MRR (clipped to {items_to_rank})": np.mean(mrr_values) if mrr_values else 0.0,
+        f"MRR @ {items_to_rank} (clipped to 0)": np.mean(mrr_values) if mrr_values else 0.0,
         **{f"Precision @ {k_val}": np.mean(top_k_prec[idx]) if top_k_prec[idx] else 0.0 for idx, k_val in enumerate(top_k)},
         **{f"Hit rate @ {k_val}": top_k_hit[idx] / len(author_min_hit) if author_min_hit else 0.0 for idx, k_val in enumerate(top_k)},
     }
@@ -365,14 +365,19 @@ def evaluate_ranker(config: dict):
         # Get the positive paper that was sampled for this author
         positive_paper = sampled_positives[author_str]
         
-        # Find its rank in the ranked list
+        # Find its rank in the ranked list, or use a penalty value if not found
         if positive_paper in ranked_papers:
             rank = ranked_papers.index(positive_paper)
-            paper_ranks_neg.append(rank)
+        else:
+            # If positive paper isn't in the ranked list, assign a penalty rank
+            # Use num_negatives + 1 as the penalty (worst possible rank + 1)
+            rank = num_negatives + 1
             
-            if author_str not in author_to_paper_ranks_neg:
-                author_to_paper_ranks_neg[author_str] = []
-            author_to_paper_ranks_neg[author_str].append(rank)
+        paper_ranks_neg.append(rank)
+        
+        if author_str not in author_to_paper_ranks_neg:
+            author_to_paper_ranks_neg[author_str] = []
+        author_to_paper_ranks_neg[author_str].append(rank)
     
     # Calculate precision @ k
     top_k_prec_neg = [[] for _ in range(len(top_k))]
@@ -384,7 +389,7 @@ def evaluate_ranker(config: dict):
     mrr_values_neg = []
     for author_str, ranks in author_to_paper_ranks_neg.items():
         min_rank = min(ranks) if ranks else float('inf')
-        if min_rank < num_negatives + 1:  # +1 for the positive paper
+        if min_rank < items_to_rank:  # Use items_to_rank as the threshold, consistent with ranking length
             mrr_values_neg.append(1 / (min_rank + 1))
         else:
             mrr_values_neg.append(0)
@@ -395,9 +400,10 @@ def evaluate_ranker(config: dict):
         positive_paper = sampled_positives[author_str]
         if positive_paper in ranked_papers:
             rank = ranked_papers.index(positive_paper)
-            author_min_hit_neg[author_str] = rank
         else:
-            author_min_hit_neg[author_str] = float('inf')
+            # If positive paper isn't in the ranked list, assign a penalty rank
+            rank = float('inf')
+        author_min_hit_neg[author_str] = rank
     
     top_k_hit_neg = [0] * len(top_k)
     for min_hit in author_min_hit_neg.values():
@@ -424,7 +430,7 @@ def evaluate_ranker(config: dict):
     num_authors_evaluated_neg = len(author_min_hit_neg)
 
     metrics_neg = {
-        f"MRR ({num_negatives} neg)": np.mean(mrr_values_neg) if mrr_values_neg else 0.0,
+        f"MRR @ {items_to_rank} (clipped to 0) ({num_negatives} neg)": np.mean(mrr_values_neg) if mrr_values_neg else 0.0,
         **{f"Precision @ {k_val} ({num_negatives} neg)": np.mean(top_k_prec_neg[idx]) if top_k_prec_neg[idx] else 0.0 for idx, k_val in enumerate(top_k)},
         **{f"Hit rate @ {k_val} ({num_negatives} neg)": (top_k_hit_neg[idx] / num_authors_evaluated_neg) if num_authors_evaluated_neg > 0 else 0.0 for idx, k_val in enumerate(top_k)},
     }
