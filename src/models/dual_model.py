@@ -3,6 +3,8 @@ from models.base_model import BaseModel
 from models.catboost import CatboostModel
 from models.cocitation_sigmoid import CocitationSigmoidModel
 from models.cocitation_logistic import CocitationLogistic
+from models.cosine_sim import CosineSimilarityModel
+from models.specter2_basic import Specter2Basic
 
 
 class DualModel(BaseModel):
@@ -13,6 +15,8 @@ class DualModel(BaseModel):
         - samples are not mutated when calling inner models' predict_proba or predict_proba_ranking
         """
         self.model_info = params
+        self.vector_db_dir = params.get('vector_db_dir')
+        self.vector_collection_name = params.get('vector_collection_name')
         self.model1 : BaseModel = self._get_model(params['model1'])
         self.model2 : BaseModel = self._get_model(params['model2'])
         self.agg_method = params.get('agg_method', 'max')
@@ -20,18 +24,26 @@ class DualModel(BaseModel):
             raise ValueError("agg_method must be either 'mean' or 'max'")
         self.loaded = False # flag to indicate that models have been loaded, must be true before running inference
 
-    @staticmethod
-    def _get_model(model_info: dict) -> BaseModel:
+    def _get_model(self, model_info: dict) -> BaseModel:
         def get_model_class(model_name: str) -> type:
             return {
                 "catboost": CatboostModel,
                 "cocitation_sigmoid": CocitationSigmoidModel,
                 "cocitation_logistic": CocitationLogistic,
                 "dual_model": DualModel,
+                "cosine_sim": CosineSimilarityModel,
+                "specter2_basic": Specter2Basic,
             }[model_name]
 
         model_class = get_model_class(model_info['name'])
-        return model_class(model_info["params"])
+        params = model_info["params"].copy()
+        
+        # Special handling for models that need additional parameters
+        if model_info['name'] == 'cosine_sim':
+            params["vector_db_dir"] = self.vector_db_dir
+            params["vector_collection_name"] = self.vector_collection_name
+        
+        return model_class(params)
 
     def _aggregate_predictions(self, pred1, pred2):
         if self.agg_method == 'mean':

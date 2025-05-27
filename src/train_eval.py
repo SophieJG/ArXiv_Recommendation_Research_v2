@@ -25,7 +25,10 @@ def get_model(config):
         case "cocitation_logistic":
             return CocitationLogistic(model_params)
         case "dual_model":
-            return DualModel(model_params)
+            params = model_params.copy()
+            params["vector_db_dir"] = config["data"]["vector_db_dir"]
+            params["vector_collection_name"] = config["data"]["vector_collection_name"]
+            return DualModel(params)
         case "specter2_basic":
             params = model_params.copy()
             params["load_path"] = model_version_path((
