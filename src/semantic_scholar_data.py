@@ -1032,7 +1032,7 @@ def process_paper_embedding_queue(config: dict):
 def process_paper_embedding_gte(config: dict):
     """
     Generate embeddings for papers using General Text Embeddings (GTE) model
-    via the sentence-transformers library.
+    via the sentence-transformers library. Optimized for GPU inference.
     """
     print("\nGenerating GTE embeddings for papers")
     
@@ -1047,46 +1047,73 @@ def process_paper_embedding_gte(config: dict):
     paper_info_path = os.path.join(data_dir(config), "papers.json")
     paper_info = json.load(open(paper_info_path))
     
-    # Load GTE model
+    # Load GTE model and move to GPU if available
+    import torch
     from sentence_transformers import SentenceTransformer
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    
     gte_model_name = config["data"].get("gte_model_name", "thenlper/gte-base")
     model = SentenceTransformer(gte_model_name)
+    model = model.to(device)
     
     # Process papers in batches
-    batch_size = config["data"].get("embedding_batch_size", 100)
+    batch_size = config["data"].get("embedding_batch_size", 64)
     papers_processed = 0
     paper_ids = list(paper_info.keys())
     
-    for i in tqdm(range(0, len(paper_ids), batch_size), "Processing GTE embeddings", miniters=max(1, len(paper_ids) // 100)):
-        batch_ids = paper_ids[i:i+batch_size]
-        batch_texts = []
-        valid_ids = []
-        
-        # Prepare texts from paper titles and abstracts
-        for pid in batch_ids:
-            paper = paper_info[pid]
-            title = paper.get("title", "")
-            abstract = paper.get("abstract", "")
+    # Enable eval mode for inference
+    model.eval()
+    
+    # Use torch.no_grad() for inference to save memory
+    with torch.no_grad():
+        batch_range = range(0, len(paper_ids), batch_size)
+        for i in tqdm(batch_range, "Processing GTE embeddings", 
+                    miniters=max(1, len(batch_range) // 100)):
+            batch_ids = paper_ids[i:i+batch_size]
+            batch_texts = []
+            valid_ids = []
             
-            if not title and not abstract:
+            # Prepare texts from paper titles and abstracts
+            for pid in batch_ids:
+                paper = paper_info[pid]
+                title = paper.get("title", "")
+                abstract = paper.get("abstract", "")
+                
+                if not title and not abstract:
+                    continue
+                    
+                text = "Title: " + title
+                if abstract:
+                    text += " Abstract: " + abstract
+                    
+                batch_texts.append(text)
+                valid_ids.append(pid)
+            
+            if not batch_texts:
                 continue
                 
-            text = "Title: " + title
-            if abstract:
-                text += " Abstract: " + abstract
-                
-            batch_texts.append(text)
-            valid_ids.append(pid)
-        
-        if not batch_texts:
-            continue
+            # Generate embeddings with sentence-transformers
+            # Use convert_to_tensor=True for GPU processing
+            batch_embeddings = model.encode(
+                batch_texts,
+                show_progress_bar=False,
+                convert_to_tensor=True,
+                device=device
+            )
             
-        # Generate embeddings with sentence-transformers
-        batch_embeddings = model.encode(batch_texts, show_progress_bar=False)
-        
-        # Store embeddings
-        embedding_db.store_embeddings(valid_ids, batch_embeddings)
-        papers_processed += len(valid_ids)
-        print(f"Processed {papers_processed}/{len(paper_ids)} papers", end="\r")
-        
+            # Convert embeddings to numpy for storage
+            batch_embeddings = batch_embeddings.cpu().numpy()
+            
+            # Store embeddings
+            embedding_db.store_embeddings(valid_ids, batch_embeddings)
+            papers_processed += len(valid_ids)
+            
+            # Clear GPU memory after each batch
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
+            
+            print(f"Processed {papers_processed}/{len(paper_ids)} papers", end="\r")
+    
     print(f"\nCompleted processing {papers_processed} papers with GTE embeddings")
