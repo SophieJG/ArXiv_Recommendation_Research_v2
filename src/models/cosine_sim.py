@@ -192,6 +192,8 @@ class CosineSimilarityModel(BaseModel):
 
     def predict_proba_ranking(self, papers: list, authors: list) -> np.ndarray:
         """Run inference on cartesian product of papers and authors with vectorized operations"""
+        assert self.model is not None, "Model must be trained before prediction"
+        
         # Get all paper IDs and process in batches
         paper_ids = [str(p.get("paper_id")) for p in papers]
         paper_embeddings = self._get_paper_embeddings(tuple(paper_ids))
@@ -217,6 +219,14 @@ class CosineSimilarityModel(BaseModel):
             sims = cosine_similarity(author_embs, paper_embeddings)
             # Take max similarity for each paper
             utility[i] = np.max(sims, axis=0)
+
+        # Convert cosine similarities to probabilities using trained logistic regression
+        # Reshape to match the expected input format (n_samples, 1)
+        similarities_flat = utility.flatten().reshape(-1, 1)
+        probabilities_flat = self.model.predict_proba(similarities_flat)[:, 1]
+        
+        # Reshape back to utility matrix shape
+        utility = probabilities_flat.reshape(len(authors), len(papers))
             
         return utility
 

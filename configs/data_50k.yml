@@ -17,4 +17,4 @@ max_author_papers: 500  # Drop authors with more publications than `max_author_p
 n_jobs: 8  # How many cores to use when querying data
 
 # Ranking params
-top_k: [1, 5, 10]  # Ks to consider for metrics which take top k. Note that the rankers only rank up to the largest k so this has an effect on ranking run time
+top_k: [1, 5, 10, 101]  # Ks to consider for metrics which take top k. Note that the rankers only rank up to the largest k so this has an effect on ranking run time
