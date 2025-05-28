@@ -249,6 +249,8 @@ The `EmbeddingDatabase` class provides persistent storage for paper embeddings u
 
 **Configuration**: Set via `vector_db_dir` and `vector_collection_name` in the data config. The database directory is shared across experiments, while collection names typically correspond to embedding types (e.g., "Semantic_Scholar_embeddings").
 
+**REMEMBER**: When you create a new Chromadb Directory and/or collection on G2, make sure to remember to provide others with reading (and writing if you want as well) permissions for the directory/collection. By default Chromadb will only give the person who created the collection CRUD permissions.
+
 **Concurrency**: Multiple processes can read from the same collection simultaneously, but only one process should write to a collection at a time to avoid conflicts, as Chromadb cannot always handle simultaneous writes to a collection.
 
 **Methods used in pipeline**:
