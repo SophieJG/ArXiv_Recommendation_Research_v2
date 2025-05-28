@@ -8,7 +8,7 @@ scikit-learn
 catboost
 pyyaml
 argparse
-torch
+torch==2.6.0
 transformers
-adapters
+adapters==1.1.0
 chromadb
