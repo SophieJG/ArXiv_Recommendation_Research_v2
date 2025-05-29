@@ -1,4 +1,5 @@
 import os
+from util import model_version_path
 
 
 class BaseEmbedder:
@@ -14,7 +15,7 @@ class BaseEmbedder:
         model: str,
         version: str
     ):
-        path = os.path.join(path, f"{model}.{version}")
+        path = model_version_path(path, model, version)
         print(f"Saving {model} embedder to {path}")
         os.makedirs(path, exist_ok=True)
         self._save(path)
@@ -25,7 +26,7 @@ class BaseEmbedder:
         model: str,
         version: str
     ):
-        path = os.path.join(path, f"{model}.{version}")
+        path = model_version_path(path, model, version)
         print(f"Loading {model} embedder from {path}")
         self._load(path)
 

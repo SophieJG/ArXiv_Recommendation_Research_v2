@@ -15,6 +15,10 @@ def models_dir(config: dict):
     return os.path.join(config["data"]["base_path"], "models")
 
 
+def model_version_path(model_path, model: str, version: str):
+    return os.path.join(model_path, f"{model}.{version}")
+
+
 def papers_path(config: dict):
     return os.path.join(data_dir(config), "papers.json")
 
@@ -25,6 +29,10 @@ def authors_path(config: dict):
 
 def kaggle_data_path(config: dict):
     return os.path.join(data_dir(config), "kaggle_data.parquet")
+
+
+def embedding_db_dir(config: dict):
+    return os.path.join(config["data"]["vector_db_dir"])
 
 
 def passthrough_func(x):
@@ -38,3 +46,4 @@ vectors are normalized to have an l2 norm of 1.
 """
     embeddings = np.vstack(embedding)
     return np.mean(np.matmul(embeddings, embeddings.transpose()))
+

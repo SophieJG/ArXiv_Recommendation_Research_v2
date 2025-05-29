@@ -144,7 +144,7 @@ Arguments:
 
 def process_references(config: dict):
     """
-    Using the list of corpus ids all the unified papers (author and Arxiv) we query the `citations` table to get corpus ids for all
+    Using the list of corpus ids of all the unified papers (author and Arxiv) we query the `citations` table to get corpus ids for all
     referenced papers. This includes all referenced papers, disregarding publication year.
     Once the unified papers are updated with references, the file saving unified papers without references is removed.
     """
@@ -620,6 +620,7 @@ a random set of papers. See config["data"]["test_is_2020"]
     num_null_papers = 0
     samples = []
 
+    # TODO: ensure positive and negative authors have papers published in years before the arxiv paper year
     # Positive samples - all authors who cited the paper
     for paper_id, paper in tqdm(papers.items(), "Generating positive samples"):
         if "arxiv_id" not in paper:
@@ -640,6 +641,7 @@ a random set of papers. See config["data"]["test_is_2020"]
             )
 
     # Negative samples - a random citing author
+    # TODO: ensure negative authors have papers published in years before the arxiv paper year
     # There's a very small chance that this author did cite the paper but what can you do...
     citing_authors = list(set([s["author"] for s in samples]))
     cited_papers = list(set([s["paper"] for s in samples]))
@@ -679,7 +681,7 @@ a random set of papers. See config["data"]["test_is_2020"]
 def generate_ranking_sample(config: dict):
     """
 Generate the data sample used for ranking. These are all papers in the test fold and all authors who 
-interacted with at least one paper in the test fold
+interacted with at least one paper in the test fold (provided they have papers before the test year)
 """
     print("\nGenerating ranking fold")
     output_path = os.path.join(data_dir(config), "ranking.json")
@@ -710,8 +712,17 @@ interacted with at least one paper in the test fold
             for author in papers[citing_paper]["authors"]:
                 if author not in valid_authors:
                     continue
-                positive_pairs.append((int(paper_id), int(author)))
-                test_authors.add(author)
+
+                # check authors' papers and make sure they have one before the test year
+                test_year = papers[paper_id]["year"]
+                author_has_published_before_test_year = False
+                for author_paper_id in authors[str(author)]:
+                    if str(author_paper_id) in papers and papers[str(author_paper_id)]["year"] < test_year:
+                        author_has_published_before_test_year = True
+                        break
+                if author_has_published_before_test_year:
+                    positive_pairs.append((int(paper_id), int(author)))
+                    test_authors.add(author)
     test_authors = sorted(list(test_authors.intersection(valid_authors)))
 
     print(f"#ranking papers: {len(test_papers)}")
@@ -752,8 +763,8 @@ Arguments:
 
 def _process_embedding_papers_inner(path: str, ids: list):
     """
-A helper function to process a single SemS papers chunk file. Should only be called through process_papers. Go
-over all papers in the file and returns the info of all papers with id in `ids`
+A helper function to process a single SemS papers chunk file. Should only be called through process_paper_embedding. Go
+over all papers in the file and returns the vectors of all papers with id in `ids` that have a vector in the file.
 
 Arguments:
     path: the file to load and process
@@ -773,46 +784,336 @@ Arguments:
             paper_embeddings[str(j["corpusid"])] = ast.literal_eval(j["vector"])
     return paper_embeddings
 
-
 def process_paper_embedding(config: dict):
     """
+    Process the paper embeddings for the given configuration. 
+    If no configuration is provided, the basic implementation is used.
+    """
+    if "embedding_type" not in config["data"]:
+        config["data"]["embedding_type"] = "basic"
+    match config["data"]["embedding_type"].lower():
+        case "basic":
+            process_paper_embedding_basic(config)
+        case "queue":
+            process_paper_embedding_queue(config)
+        case "gte":
+            process_paper_embedding_gte(config)
+        case _:
+            raise ValueError(f"Invalid embedding type: {config['data']['embedding_type']}")
+
+def process_paper_embedding_basic(config: dict):
+    """
     Using the list of corpus ids of the Arxiv papers we query the `embedding` table to get spector2 embedding for each paper.
+    This implementation processes files sequentially to ensure memory safety.
     """
     print("\nLoading embedding info from Semantic Scholar")
-    embedding_papers_path = os.path.join(tmp_data_dir(config), "papers_embedding.json")
-    if os.path.exists(embedding_papers_path):
-        print(f"{embedding_papers_path} exists - Skipping")
-        return
-
+    
+    # Initialize embedding database
+    from embedding_database import EmbeddingDatabase
+    embedding_db = EmbeddingDatabase(
+        db_dir=config["data"]["vector_db_dir"],
+        collection_name=config["data"]["vector_collection_name"]
+    )
+    
+    # Load paper info
     paper_info_path = os.path.join(data_dir(config), "papers.json")
     paper_info = json.load(open(paper_info_path))
-    # corpus ids for arxiv papers
-    arxiv_papers = [id for id in paper_info.keys()]
-
-    res = multi_file_query(
-        os.path.join(config["data"]["semantic_scholar_path"], "embeddings-specter_v2", "*.gz"),
-        _process_embedding_papers_inner,
-        config["data"]["n_jobs"],
-        ids=arxiv_papers
-    )
-
-    # multi_file_query returns a list of dicts. Merge it to a single dict. Note that a single paper can have citations in multiple
-    # res files so the dictionaries needs to be "deep" merged
-    embedding_papers = {}
-    for d in tqdm(res, "merging embedding files"):
-        embedding_papers.update(d)
-    # print("embedding_papers:\n", embedding_papers）
-
-
-    for paper_id, paper in paper_info.items():
-        if paper_id in embedding_papers:
-            paper["embedding"] = embedding_papers[paper_id]
-
-    print(f"Saving to {embedding_papers_path}")
-    with open(embedding_papers_path, 'w') as f:
-        json.dump(embedding_papers, f, indent=4)
+    papers = set(paper_info.keys())  # Convert to set for O(1) lookup
     
-
+    # Get list of files to process
+    files = glob.glob(os.path.join(
+        config["data"]["semantic_scholar_path"], 
+        "embeddings-specter_v2", 
+        "*.gz"
+    ))
+    
+    def process_file(path: str, paper_ids: set) -> int:
+        """
+        Process a single embedding file and store embeddings for matching papers.
+        Returns the number of embeddings processed.
+        """
+        current_batch_ids = []
+        current_batch_embeddings = []
+        processed_count = 0
+        
+        try:
+            with gzip.open(path, "rt", encoding="UTF-8") as fin:
+                for line in fin:
+                    try:
+                        paper = json.loads(line)
+                        paper_id = str(paper["corpusid"])
+                        
+                        if paper_id not in paper_ids:
+                            continue
+                            
+                        # Add to current batch
+                        current_batch_ids.append(paper_id)
+                        current_batch_embeddings.append(
+                            ast.literal_eval(paper["vector"])
+                        )
+                        
+                        # If batch is full, store it
+                        if len(current_batch_ids) >= embedding_db.max_batch_size:
+                            embedding_db.store_embeddings(
+                                current_batch_ids, 
+                                current_batch_embeddings
+                            )
+                            processed_count += len(current_batch_ids)
+                            current_batch_ids = []
+                            current_batch_embeddings = []
+                            
+                    except (json.JSONDecodeError, KeyError, ValueError) as e:
+                        print(f"Error processing line in {path}: {e}")
+                        continue
+                
+                # Store any remaining embeddings
+                if current_batch_ids:
+                    embedding_db.store_embeddings(
+                        current_batch_ids, 
+                        current_batch_embeddings
+                    )
+                    processed_count += len(current_batch_ids)
+                    
+        except Exception as e:
+            print(f"Error processing file {path}: {e}")
+            
+        return processed_count
+    
+    # Process files sequentially
+    total_embeddings = 0
+    for file_path in tqdm(files, "Processing embedding files"):
+        embeddings_in_file = process_file(file_path, papers)
+        total_embeddings += embeddings_in_file
+        
+    print(f"Processed {total_embeddings} embeddings from {len(files)} files")
+    
+    # Save updated paper info
     print(f"Saving to {paper_info_path}")
     with open(paper_info_path, 'w') as f:
         json.dump(paper_info, f, indent=4)
+
+
+def process_paper_embedding_queue(config: dict):
+    """
+    Using the list of corpus ids of the Arxiv papers we query the `embedding` table to get spector2 embedding for each paper.
+    This implementation uses a producer-consumer pattern to process files in parallel while keeping memory usage bounded.
+    """
+    # NOTE: This has not been tested yet
+    print("\nLoading embedding info from Semantic Scholar")
+    
+    # Initialize embedding database
+    from embedding_database import EmbeddingDatabase
+    embedding_db = EmbeddingDatabase(
+        db_dir=config["data"]["vector_db_dir"],
+        collection_name=config["data"]["vector_collection_name"]
+    )
+    
+    # Load paper info
+    paper_info_path = os.path.join(data_dir(config), "papers.json")
+    paper_info = json.load(open(paper_info_path))
+    papers = set(paper_info.keys())  # Convert to set for O(1) lookup
+    
+    # Get list of files to process
+    files = glob.glob(os.path.join(
+        config["data"]["semantic_scholar_path"], 
+        "embeddings-specter_v2", 
+        "*.gz"
+    ))
+    
+    # Create a queue for embeddings
+    from queue import Queue
+    from threading import Thread
+    import time
+    
+    embedding_queue = Queue(maxsize=1000)  # Limit queue size to control memory usage
+    stop_event = False
+    total_embeddings = 0
+    
+    def consumer():
+        """Consumer thread that reads from queue and writes to database in batches."""
+        nonlocal total_embeddings
+        current_batch_ids = []
+        current_batch_embeddings = []
+        
+        while True:
+            try:
+                # Get embedding from queue with timeout to allow checking stop_event
+                item = embedding_queue.get(timeout=1.0)
+                if item is None:  # Signal to stop
+                    break
+                    
+                paper_id, embedding = item
+                current_batch_ids.append(paper_id)
+                current_batch_embeddings.append(embedding)
+                
+                # If batch is full, store it
+                if len(current_batch_ids) >= embedding_db.max_batch_size:
+                    embedding_db.store_embeddings(
+                        current_batch_ids, 
+                        current_batch_embeddings
+                    )
+                    total_embeddings += len(current_batch_ids)
+                    current_batch_ids = []
+                    current_batch_embeddings = []
+                    
+                embedding_queue.task_done()
+                
+            except Queue.Empty:
+                if stop_event:
+                    break
+                continue
+            except Exception as e:
+                print(f"Error in consumer thread: {e}")
+                continue
+        
+        # Store any remaining embeddings
+        if current_batch_ids:
+            embedding_db.store_embeddings(
+                current_batch_ids, 
+                current_batch_embeddings
+            )
+            total_embeddings += len(current_batch_ids)
+    
+    def process_file(path: str, paper_ids: set):
+        """
+        Process a single embedding file and put embeddings into the queue.
+        """
+        try:
+            with gzip.open(path, "rt", encoding="UTF-8") as fin:
+                for line in fin:
+                    try:
+                        paper = json.loads(line)
+                        paper_id = str(paper["corpusid"])
+                        
+                        if paper_id not in paper_ids:
+                            continue
+                            
+                        # Put embedding in queue, blocking if queue is full
+                        embedding_queue.put((
+                            paper_id,
+                            ast.literal_eval(paper["vector"])
+                        ))
+                            
+                    except (json.JSONDecodeError, KeyError, ValueError) as e:
+                        print(f"Error processing line in {path}: {e}")
+                        continue
+                    
+        except Exception as e:
+            print(f"Error processing file {path}: {e}")
+    
+    # Start consumer thread
+    consumer_thread = Thread(target=consumer, daemon=True)
+    consumer_thread.start()
+    
+    try:
+        # Process files in parallel
+        print("Processing files in parallel...")
+        Parallel(n_jobs=config["data"]["n_jobs"])(
+            delayed(process_file)(f, papers) for f in tqdm(files, "processing embedding files")
+        )
+        
+        # Signal consumer to stop
+        stop_event = True
+        embedding_queue.put(None)
+        
+        # Wait for consumer to finish
+        consumer_thread.join()
+        
+    except Exception as e:
+        print(f"Error in main thread: {e}")
+        stop_event = True
+        embedding_queue.put(None)
+        consumer_thread.join()
+        raise e
+        
+    print(f"Processed {total_embeddings} embeddings from {len(files)} files")
+
+
+def process_paper_embedding_gte(config: dict):
+    """
+    Generate embeddings for papers using General Text Embeddings (GTE) model
+    via the sentence-transformers library. Optimized for GPU inference.
+    """
+    print("\nGenerating GTE embeddings for papers")
+    
+    # Initialize embedding database
+    from embedding_database import EmbeddingDatabase
+    embedding_db = EmbeddingDatabase(
+        db_dir=config["data"]["vector_db_dir"],
+        collection_name=config["data"]["vector_collection_name"]
+    )
+    
+    # Load paper info
+    paper_info_path = os.path.join(data_dir(config), "papers.json")
+    paper_info = json.load(open(paper_info_path))
+    
+    # Load GTE model and move to GPU if available
+    import torch
+    from sentence_transformers import SentenceTransformer
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    
+    gte_model_name = config["data"].get("gte_model_name", "thenlper/gte-base")
+    model = SentenceTransformer(gte_model_name)
+    model = model.to(device)
+    
+    # Process papers in batches
+    batch_size = config["data"].get("embedding_batch_size", 64)
+    papers_processed = 0
+    paper_ids = list(paper_info.keys())
+    
+    # Enable eval mode for inference
+    model.eval()
+    
+    # Use torch.no_grad() for inference to save memory
+    with torch.no_grad():
+        batch_range = range(0, len(paper_ids), batch_size)
+        for i in tqdm(batch_range, "Processing GTE embeddings", 
+                    miniters=max(1, len(batch_range) // 100)):
+            batch_ids = paper_ids[i:i+batch_size]
+            batch_texts = []
+            valid_ids = []
+            
+            # Prepare texts from paper titles and abstracts
+            for pid in batch_ids:
+                paper = paper_info[pid]
+                title = paper.get("title", "")
+                abstract = paper.get("abstract", "")
+                
+                if not title and not abstract:
+                    continue
+                    
+                text = "Title: " + title
+                if abstract:
+                    text += " Abstract: " + abstract
+                    
+                batch_texts.append(text)
+                valid_ids.append(pid)
+            
+            if not batch_texts:
+                continue
+                
+            # Generate embeddings with sentence-transformers
+            # Use convert_to_tensor=True for GPU processing
+            batch_embeddings = model.encode(
+                batch_texts,
+                show_progress_bar=False,
+                convert_to_tensor=True,
+                device=device
+            )
+            
+            # Convert embeddings to numpy for storage
+            batch_embeddings = batch_embeddings.cpu().numpy()
+            
+            # Store embeddings
+            embedding_db.store_embeddings(valid_ids, batch_embeddings)
+            papers_processed += len(valid_ids)
+            
+            # Clear GPU memory after each batch
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
+            
+            print(f"Processed {papers_processed}/{len(paper_ids)} papers", end="\r")
+    
+    print(f"\nCompleted processing {papers_processed} papers with GTE embeddings")

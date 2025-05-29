@@ -57,6 +57,7 @@ def runner(config: dict):
         
 
     if config["runner"]["paper_embedding"]["fit"]:
+        raise NotImplementedError("Paper embedding fitting is Deprecated. Use the model section instead to train a model that fits the embeddings.")
         fit_paper_embedding(config)
 
     if config["runner"]["model"]["train"]:
@@ -69,6 +70,7 @@ def runner(config: dict):
     if config["runner"]["ranking"]["generate_predictions"]:
         generate_utility_predictions(config)
     if config["runner"]["ranking"]["generate_paper_embeddings"]:
+        raise NotImplementedError("Paper embedding generation is Deprecated. Skip this step.")
         generate_paper_embeddings(config)
     if config["runner"]["ranking"]["evaluate"]:
         evaluate_ranker(config)
@@ -76,6 +78,6 @@ def runner(config: dict):
 
 if __name__ == '__main__':
     config = load_config()
-    # print("Running with config:\n", json.dumps(config, indent=4))
+    print("Running with config:\n", json.dumps(config, indent=4))
     runner(config)
 

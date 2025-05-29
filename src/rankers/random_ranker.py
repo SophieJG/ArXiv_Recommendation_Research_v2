@@ -14,7 +14,8 @@ Rank the papers randomly
     def rank(
         self,
         utility: pd.DataFrame,
-        paper_embeddings: dict
+        paper_embeddings: dict,
+        disable_tqdm: bool = False
     ):
         ranked = {}
         for author, row in utility.iterrows():

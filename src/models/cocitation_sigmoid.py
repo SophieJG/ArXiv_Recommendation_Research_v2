@@ -57,16 +57,44 @@ class CocitationSigmoidModel(BaseModel):
         """
         Run inference on the cartesian product between all papers and all authors
         """
-        # TODO: make faster implementation
+        # Pre-compute all paper references once
         paper_refs = [set(p.get("references", [])) for p in papers]
-        author_paper_refs = [[set(p.get("references", [])) for p in a['author']["papers"]] for a in authors]
+        
+        # Build a reference to paper index mapping for faster lookups
+        ref_to_papers = {}
+        for i, refs in enumerate(paper_refs):
+            for ref in refs:
+                if ref not in ref_to_papers:
+                    ref_to_papers[ref] = []
+                ref_to_papers[ref].append(i)
+        
+        # Initialize utility matrix
         utility = np.zeros((len(authors), len(papers)))
-        for i, author_refs in enumerate(author_paper_refs):
-            for j, paper_ref in enumerate(paper_refs):
-                utility[i, j] = max(
-                    (len(paper_ref & a_ref) for a_ref in author_refs),
-                    default=0
-                )
+        
+        # Process each author separately
+        for i, author in enumerate(authors):
+            # Extract all references from author's papers
+            author_papers_refs = [set(p.get("references", [])) for p in author['author']["papers"]]
+            
+            if not author_papers_refs:
+                continue  # Skip authors with no papers
+                
+            # For each paper of the author
+            for author_paper_refs in author_papers_refs:
+                # For each reference in this author's paper
+                paper_cocitations = np.zeros(len(papers))
+                
+                # Count cocitations for all papers that share any reference with this author paper
+                for ref in author_paper_refs:
+                    if ref in ref_to_papers:
+                        # Get indices of papers that cite this reference
+                        for paper_idx in ref_to_papers[ref]:
+                            # Increment cocitation count for this paper
+                            paper_cocitations[paper_idx] += 1
+                
+                # Update maximum cocitations for each paper
+                utility[i] = np.maximum(utility[i], paper_cocitations)
+                
         utility = self._logistic_sigmoid(utility)
         assert utility.shape == (len(authors), len(papers))
         return utility

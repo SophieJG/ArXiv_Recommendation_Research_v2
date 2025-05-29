@@ -1,0 +1,7 @@
+model: "specter2_basic"  # Which model to train
+version: "0.0.0"  # Should be used when changing parameters, preprocessing etc.
+params:  # Additional model parameters, Catboost doesn't have any
+  batch_size: 16
+  scaling_factor: 5.0  # Controls how Euclidean distance is converted to similarity (higher = more gradual falloff)
+  vector_db_dir: "/share/garg/arxiv_vector_databases/spector_store"  # Path to the vector database. This is used to efficiently store the embeddings of the papers
+  vector_collection_name: "specter_embeddings"

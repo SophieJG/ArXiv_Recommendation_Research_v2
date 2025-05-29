@@ -15,11 +15,12 @@ Rank the papers according to paper-author utility
     def rank(
         self,
         utility: pd.DataFrame,
-        paper_embeddings: dict
+        paper_embeddings: dict,
+        disable_tqdm: bool = False
     ):
-        print(f"Ranking with sort ranker\nitems_to_rank: {self.items_to_rank}")
+        # print(f"Ranking with sort ranker\nitems_to_rank: {self.items_to_rank}")
         ranked = {}
-        for author, row in tqdm(utility.iterrows(), "Ranking", len(utility)):
+        for author, row in tqdm(utility.iterrows(), "Ranking", len(utility), disable=disable_tqdm):
             ranked[author] = list(row.sort_values(ascending=False, kind="stable").keys())[:self.items_to_rank]
         return ranked
         
